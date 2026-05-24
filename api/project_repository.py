@@ -81,6 +81,52 @@ class ProjectRepository:
 
         return self._parse_project_record(result.stdout)
 
+
+    def record_phase_transition(
+        self,
+        project_id: str,
+        from_phase: str,
+        to_phase: str,
+        transition_kind: str,
+        guard_results: list[dict[str, Any]],
+        hard_gate_results: dict[str, Any],
+        state_machine_version: str,
+        reason: str | None,
+        actor_email: str,
+    ) -> None:
+        guard_results_json = self._json_array(guard_results)
+        hard_gate_results_json = self._json(hard_gate_results)
+
+        sql = f"""
+        INSERT INTO phase_transitions (
+          project_id,
+          from_phase,
+          to_phase,
+          transition_kind,
+          guard_results,
+          hard_gate_results,
+          state_machine_version,
+          reason,
+          actor_email
+        )
+        VALUES (
+          '{self._sql(project_id)}',
+          '{self._sql(from_phase)}',
+          '{self._sql(to_phase)}',
+          '{self._sql(transition_kind)}',
+          '{guard_results_json}'::jsonb,
+          '{hard_gate_results_json}'::jsonb,
+          '{self._sql(state_machine_version)}',
+          {self._nullable(reason)},
+          '{self._sql(actor_email)}'
+        );
+        """
+
+        result = self._psql(sql)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr)
+
+
     def update_phase(self, project_id: str, to_phase: str) -> None:
         sql = f"""
         UPDATE projects
@@ -145,6 +191,10 @@ class ProjectRepository:
             stderr=subprocess.PIPE,
             check=False,
         )
+
+
+    def _json_array(self, value: list[dict[str, Any]]) -> str:
+        return self._sql(json.dumps(value, separators=(",", ":")))
 
     def _json(self, value: dict[str, Any]) -> str:
         return self._sql(json.dumps(value, separators=(",", ":")))

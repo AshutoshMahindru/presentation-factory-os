@@ -208,20 +208,36 @@ def request_phase_transition(project_id: str, payload: PhaseTransitionRequest) -
             },
         ) from exc
 
+    serialized_guard_results = [
+        {
+            "name": result.name,
+            "status": "pass" if result.passed else "fail",
+            "reason": result.reason,
+        }
+        for result in guard_results
+    ]
+
+    transition_id = str(uuid4())
+
+    project_repository.record_phase_transition(
+        project_id=project_id,
+        from_phase=transition.from_phase,
+        to_phase=transition.to_phase,
+        transition_kind=transition.kind,
+        guard_results=serialized_guard_results,
+        hard_gate_results={},
+        state_machine_version=state_machine.version,
+        reason=payload.reason,
+        actor_email=payload.requested_by,
+    )
+
     project_repository.update_phase(project_id, transition.to_phase)
 
     return {
-        "transition_id": str(uuid4()),
+        "transition_id": transition_id,
         "project_id": project_id,
         "from_phase": transition.from_phase,
         "to_phase": transition.to_phase,
         "status": "applied",
-        "guards": [
-            {
-                "name": result.name,
-                "status": "pass" if result.passed else "fail",
-                "reason": result.reason,
-            }
-            for result in guard_results
-        ],
+        "guards": serialized_guard_results,
     }
