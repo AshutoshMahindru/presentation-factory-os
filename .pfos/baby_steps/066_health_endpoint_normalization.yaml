@@ -1,0 +1,18 @@
+step_id: 66
+name: health_endpoint_normalization
+branch: codex/step-66-health-endpoint-normalization
+objective: >
+  Audit and normalize the low-risk PFOS v3.2.4 control-plane health endpoint
+  surface by documenting implemented and planned routes, adding focused
+  compatibility coverage, and avoiding Docker, Makefile, schema, source
+  lifecycle job, and outbox worker behavior changes.
+commit_message: Normalize health endpoint surface
+validation_commands:
+  - python3 -m compileall api system
+  - python3 -m pytest tests/integration/test_health_endpoint_normalization.py -vv
+  - make validate
+files_expected:
+  - api/workflow.py
+  - docs/30_Health_Endpoint_Surface.md
+  - tests/integration/test_health_endpoint_normalization.py
+  - .pfos/baby_steps/066_health_endpoint_normalization.yaml

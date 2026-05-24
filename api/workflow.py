@@ -101,6 +101,14 @@ class SourceRetractionStatusResponse(BaseModel):
     oldest_open_age_seconds: int | None = None
 
 
+class OutboxStatusResponse(BaseModel):
+    project_id: str
+    blocked: bool
+    unprocessed_count: int
+    failed_count: int
+    oldest_unprocessed_age_seconds: int | None = None
+
+
 
 class HardGateStatusResponse(BaseModel):
     project_id: str
@@ -113,6 +121,11 @@ class HardGateStatusResponse(BaseModel):
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"service": "workflow-service", "status": "ok"}
+
+
+@app.get("/ready")
+def ready() -> dict[str, str]:
+    return {"service": "workflow-service", "status": "ready"}
 
 
 @app.post("/projects", response_model=CreateProjectResponse)
@@ -161,6 +174,23 @@ def get_project_source_retraction_status(project_id: str) -> SourceRetractionSta
         processing_count=status.processing_count,
         failed_count=status.failed_count,
         oldest_open_age_seconds=status.oldest_open_age_seconds,
+    )
+
+
+@app.get("/health/projects/{project_id}/outbox", response_model=OutboxStatusResponse)
+def get_project_outbox_status(project_id: str) -> OutboxStatusResponse:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail={"error": "project_not_found"})
+
+    status = outbox_repository.get_project_outbox_status(project_id)
+
+    return OutboxStatusResponse(
+        project_id=project_id,
+        blocked=status.blocked,
+        unprocessed_count=status.unprocessed_count,
+        failed_count=status.failed_count,
+        oldest_unprocessed_age_seconds=status.oldest_unprocessed_age_seconds,
     )
 
 
