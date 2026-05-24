@@ -1,0 +1,277 @@
+version: 3.2.4
+name: presentation_factory_os_state_machine
+phases:
+- created
+- intake
+- strategy
+- research
+- financial_model
+- narrative
+- visual_design
+- review
+- approved
+- exported
+- rejected
+transitions:
+  forward:
+  - from: created
+    to: intake
+    guards: []
+  - from: intake
+    to: strategy
+    guards:
+    - rubric_above_3_5
+    - thesis_audience_aligned
+    - audience_psychology_adequate
+    - no_blocking_rules
+  - from: strategy
+    to: research
+    guards:
+    - rubric_above_3_5
+    - thesis_audience_aligned
+    - no_blocking_rules
+  - from: research
+    to: financial_model
+    guards:
+    - evidence_coverage_ok
+    - no_blocking_rules
+  - from: financial_model
+    to: narrative
+    guards:
+    - rubric_above_4_0
+    - model_validated
+    - no_unsupported_financial_claims
+    - no_blocking_rules
+  - from: narrative
+    to: visual_design
+    guards:
+    - rubric_above_3_5
+    - all_material_claims_sourced
+    - no_blocking_rules
+  - from: visual_design
+    to: review
+    guards:
+    - rubric_above_3_5
+    - visual_qa_passed
+    - no_blocking_rules
+  - from: review
+    to: approved
+    guards:
+    - rubric_above_4_0
+    - approval_quorum_met
+    - all_material_claims_sourced
+    - visual_qa_passed
+    - no_blocking_rules
+  - from: approved
+    to: exported
+    guards:
+    - approval_quorum_met
+    - export_integrity
+    - no_pii_exposure
+    - no_blocking_rules
+  retreat:
+  - from: strategy
+    to: intake
+    guards:
+    - human_rejected_brief_incomplete
+  - from: research
+    to: strategy
+    guards:
+    - human_rejected_strategy_weak
+  - from: financial_model
+    to: research
+    guards:
+    - human_rejected_evidence_gap
+  - from: narrative
+    to: financial_model
+    guards:
+    - human_rejected_model_issue
+  - from: visual_design
+    to: narrative
+    guards:
+    - human_rejected_story_issue
+  - from: review
+    to: visual_design
+    guards:
+    - human_rejected_visual_issue
+  - from: review
+    to: narrative
+    guards:
+    - human_rejected_narrative_issue
+  - from: review
+    to: financial_model
+    guards:
+    - human_rejected_financial_issue
+  reject:
+  - from: review
+    to: rejected
+    guards:
+    - human_rejected_terminal
+  - from: strategy
+    to: rejected
+    guards:
+    - human_rejected_terminal
+named_guards:
+  rubric_above_3_5:
+    type: rubric
+    operator: '>='
+    threshold: 3.5
+  rubric_above_4_0:
+    type: rubric
+    operator: '>='
+    threshold: 4.0
+  evidence_coverage_ok:
+    type: graph_query
+    minimum_material_claim_coverage: 1.0
+  thesis_audience_aligned:
+    type: rubric_dimension
+    dimension: thesis_audience_alignment
+    threshold: 3.5
+  audience_psychology_adequate:
+    type: schema_validator
+    schema: 22_AudienceProfile.schema.json
+    field: projects.audience_profile
+    required_for_transition: intake_to_strategy
+    failure_behavior: block_transition
+  model_validated:
+    type: financial_validator
+    required_status: validated
+    parser_provenance_allow_list:
+    - openpyxl_with_formulas_lib
+  visual_qa_passed:
+    type: visual_qa
+    minimum_score: 4.0
+  approval_quorum_met:
+    type: approval_ledger_quorum
+  no_blocking_rules:
+    type: hard_gate_bundle
+    checks:
+    - no_failed_or_unprocessed_outbox_items
+    - no_stale_downstream_artifacts
+    - no_pending_retraction_cascade
+    - no_blocking_rules_table_flags
+  human_rejected_brief_incomplete:
+    type: human_rejection
+    reason: brief_incomplete
+  human_rejected_strategy_weak:
+    type: human_rejection
+    reason: strategy_weak
+  human_rejected_evidence_gap:
+    type: human_rejection
+    reason: evidence_gap
+  human_rejected_model_issue:
+    type: human_rejection
+    reason: model_issue
+  human_rejected_story_issue:
+    type: human_rejection
+    reason: story_issue
+  human_rejected_visual_issue:
+    type: human_rejection
+    reason: visual_issue
+  human_rejected_narrative_issue:
+    type: human_rejection
+    reason: narrative_issue
+  human_rejected_financial_issue:
+    type: human_rejection
+    reason: financial_issue
+  human_rejected_terminal:
+    type: human_rejection
+    reason: terminal_rejection
+  no_unsupported_financial_claims:
+    type: financial_claim_checker
+  all_material_claims_sourced:
+    type: evidence_graph_checker
+  no_pii_exposure:
+    type: security_checker
+  export_integrity:
+    type: export_validator
+  no_pending_retraction_cascade:
+    type: job_queue
+    queue_table: source_lifecycle_events
+    condition: project_has_zero_unprocessed_retraction_events
+  outbox_drained:
+    type: outbox
+    table: outbox
+    condition: project_has_zero_failed_or_unprocessed_outbox_rows
+hard_gates:
+- no_unsupported_financial_claims
+- all_material_claims_sourced
+- no_pii_exposure
+- audience_psychology_adequate
+- visual_qa_passed
+- export_integrity
+- no_pending_retraction_cascade
+- outbox_drained
+- no_stale_downstream_artifacts
+approval_quorum_rules:
+  intake:
+    required_count: 1
+    allowed_roles:
+    - analyst
+    - partner
+    minimum_roles: {}
+    decision_rule: majority
+  strategy:
+    required_count: 1
+    allowed_roles:
+    - partner
+    - senior_partner
+    minimum_roles:
+      partner: 1
+    decision_rule: majority
+  financial_model:
+    required_count: 2
+    allowed_roles:
+    - analyst
+    - partner
+    - senior_partner
+    minimum_roles:
+      partner: 1
+    decision_rule: majority
+  review:
+    required_count: 2
+    allowed_roles:
+    - partner
+    - senior_partner
+    - ic_member
+    minimum_roles:
+      ic_member: 1
+    decision_rule: unanimous
+runtime_rules:
+  llm_output_cannot_transition_phase: true
+  transition_writer: workflow_service_only
+  transition_audit_table: phase_transitions
+  retreat_requires_reason: true
+  rejected_is_terminal: true
+  exported_is_terminal: true
+  outbox_blocking_threshold: 0
+  outbox_max_retry: 5
+  outbox_retry_backoff_seconds:
+  - 5
+  - 30
+  - 120
+  - 300
+  - 600
+  retreat_invalidates_downstream: true
+  downstream_artifact_policy: archive_as_stale
+  stale_artifact_blocking: true
+  work_is_never_deleted_on_retreat: true
+  phase_enum_source_of_truth: 08_StateMachine_Spec.yaml phases list
+  phase_enum_sync_required: SQL phase CHECK constraints, generated code enums, API
+    validators, and UI phase labels must be regenerated when phase list changes.
+approval_quorum_scope:
+  evaluation_rule: phase_completion_gate
+  description: Each quorum rule is evaluated when a user attempts the forward transition
+    that completes the named phase. The approval snapshot used for a transition must
+    be created after the latest successful entry into that phase and before the transition
+    request.
+  phase_completion_transitions:
+    intake: intake -> strategy
+    strategy: strategy -> research
+    financial_model: financial_model -> narrative
+    review: review -> approved
+  export_rule: approved -> exported reuses the review approval quorum snapshot, but
+    still re-runs export_integrity, no_pii_exposure, outbox, retraction, and stale-artifact
+    gates at export time.
+  retreat_rule: Any retreat into an earlier phase invalidates downstream approval
+    snapshots for later phases and requires new quorum evaluation after re-validation.

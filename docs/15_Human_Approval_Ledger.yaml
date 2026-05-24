@@ -1,0 +1,117 @@
+version: 3.2.4
+name: human_approval_ledger
+
+description: >
+  Approval is a ledger, not a boolean. Each approval, rejection, abstention,
+  and change request is an immutable event that contributes to a phase-specific
+  quorum computation.
+
+data_model:
+  table: approval_ledger
+  fields:
+    actor_email:
+      type: string
+      required: true
+    role:
+      type: enum
+      values: [analyst, partner, senior_partner, ic_member, admin]
+      required: true
+    decision:
+      type: enum
+      values: [approved, rejected, changes_requested, abstained]
+      required: true
+    rubric_score_snapshot:
+      type: json
+      required: true
+    notes:
+      type: string
+      required: false
+    created_at:
+      type: timestamp
+      required: true
+      default: now
+
+quorum_computation:
+  intake:
+    required_count: 1
+    allowed_roles: [analyst, partner]
+    decision_rule: majority
+  strategy:
+    required_count: 1
+    allowed_roles: [partner, senior_partner]
+    minimum_roles:
+      partner: 1
+    decision_rule: majority
+  financial_model:
+    required_count: 2
+    allowed_roles: [analyst, partner, senior_partner]
+    minimum_roles:
+      partner: 1
+    decision_rule: majority
+  review:
+    required_count: 2
+    allowed_roles: [partner, senior_partner, ic_member]
+    minimum_roles:
+      ic_member: 1
+    decision_rule: unanimous
+
+rejection_policy:
+  any_rejection_by_senior_partner:
+    action: escalation
+    blocks_transition: true
+  review_rejection:
+    action: retreat_or_terminal_reject
+    requires_reason: true
+  changes_requested:
+    action: retreat
+    requires_target_phase: true
+
+escalation:
+  triggers:
+    - rejection_by_senior_partner
+    - stalled_48h
+  actions:
+    - notify_project_owner
+    - mark_phase_attention_required
+    - require_partner_review_note
+
+api_endpoints:
+  post_approvals:
+    method: POST
+    path: /approvals
+    body_required: [project_id, phase, actor_email, role, decision, rubric_score_snapshot]
+  get_approval_status:
+    method: GET
+    path: /approvals/status/{project_id}/{phase}
+    returns:
+      - quorum_met
+      - decision_rule
+      - approvals
+      - rejections
+      - abstentions
+      - missing_roles
+      - escalation_status
+
+Audit:
+  immutable_entries: true
+  no_soft_delete: true
+  corrections_are_new_entries: true
+  actor_identity_required: true
+  timestamp_source: server
+
+phase_scope:
+  evaluation_rule: phase_completion_gate
+  approval_snapshot_window: >
+    Approval entries count toward a phase quorum only if they were created after the latest
+    successful entry into that phase and before the requested forward transition out of that phase.
+  evaluated_on:
+    intake: intake -> strategy
+    strategy: strategy -> research
+    financial_model: financial_model -> narrative
+    review: review -> approved
+  export_behavior: >
+    approved -> exported reuses the review quorum snapshot but re-runs export integrity,
+    source, stale-artifact, retraction, outbox, and PII gates at export time.
+  retreat_behavior: >
+    Retreat invalidates downstream approval snapshots. Re-advancement requires fresh quorum
+    evaluation after downstream artifacts are revalidated.

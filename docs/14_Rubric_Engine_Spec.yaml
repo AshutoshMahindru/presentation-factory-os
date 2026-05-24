@@ -1,0 +1,164 @@
+version: 3.2.4
+name: rubric_engine_spec
+
+scoring_scale: 1_to_5
+aggregation: weighted_average
+
+judge_isolation:
+  llm_judge_temperature: 0.0
+  judge_must_not_see:
+    - producer_model
+    - producer_prompt
+    - prior_self_scores
+  judge_receives:
+    - phase_artifact
+    - relevant_evidence_payload
+    - rubric_dimension_definition
+
+phases:
+  intake:
+    block_threshold: 3.0
+    dimensions:
+      brief_completeness:
+        evaluator: heuristic
+        weight: 0.3
+      audience_clarity:
+        evaluator: llm_judge
+        model: qwen3-235b-a22b
+        weight: 0.4
+      decision_definition:
+        evaluator: heuristic
+        weight: 0.3
+
+  strategy:
+    block_threshold: 3.5
+    dimensions:
+      thesis_strength:
+        evaluator: llm_judge
+        model: qwen3-235b-a22b
+        weight: 0.30
+      strategic_fit:
+        evaluator: heuristic
+        weight: 0.20
+      contradiction_handling:
+        evaluator: graph_query
+        weight: 0.15
+      thesis_audience_alignment:
+        evaluator: llm_judge
+        model: qwen3-235b-a22b
+        weight: 0.20
+      audience_psychology_adequacy:
+        evaluator: heuristic
+        source_schema: 22_AudienceProfile.schema.json
+        weight: 0.15
+        blocking_threshold: 3.5
+
+  financial_model:
+    block_threshold: 4.0
+    dimensions:
+      assumption_quality:
+        evaluator: heuristic
+        weight: 0.25
+      formula_integrity:
+        evaluator: deterministic
+        weight: 0.25
+      sensitivity_coverage:
+        evaluator: heuristic
+        weight: 0.25
+      downside_logic:
+        evaluator: llm_judge
+        model: deepseek-r1-distill-32b
+        weight: 0.25
+
+  narrative:
+    block_threshold: 3.5
+    dimensions:
+      story_flow:
+        evaluator: llm_judge
+        model: qwen3-235b-a22b
+        weight: 0.25
+      slide_sequence:
+        evaluator: deterministic
+        implementation: deck_builder/narrative_arc_validator.py
+        weight: 0.20
+      objection_preemption:
+        evaluator: llm_judge
+        model: qwen3-235b-a22b
+        weight: 0.20
+      thesis_alignment_score:
+        evaluator: llm_judge
+        model: qwen3-235b-a22b
+        weight: 0.20
+      visual_narrative_alignment:
+        evaluator: llm_judge
+        model: qwen2.5-vl-7b
+        input: screenshot
+        weight: 0.15
+
+  visual_design:
+    block_threshold: 3.5
+    dimensions:
+      layout_hierarchy:
+        evaluator: llm_judge
+        model: qwen2.5-vl-7b
+        weight: 0.25
+      density_control:
+        evaluator: heuristic
+        weight: 0.25
+      chart_legibility:
+        evaluator: llm_judge
+        model: qwen2.5-vl-7b
+        input: screenshot
+        weight: 0.25
+      design_consistency:
+        evaluator: heuristic
+        weight: 0.25
+
+  review:
+    block_threshold: 4.0
+    dimensions:
+      visual_qa:
+        evaluator: deterministic
+        weight: 0.25
+      source_traceability:
+        evaluator: graph_query
+        weight: 0.25
+      deck_completeness:
+        evaluator: heuristic
+        weight: 0.25
+      financial_validation:
+        evaluator: deterministic
+        weight: 0.25
+
+rules:
+  weighted_average: true
+  blocking_dimension_cap:
+    enabled: true
+    behavior: if_any_blocking_dim_below_threshold_cap_overall_at_threshold_minus_0_01
+  persist_each_dimension_score: true
+  persist_overall_score: true
+  write_phase_trace: true
+  write_provenance: true
+
+blocking_dimensions:
+  strategy:
+    - audience_psychology_adequacy
+  financial_model:
+    - formula_integrity
+  visual_design:
+    - chart_legibility
+  review:
+    - visual_qa
+    - source_traceability
+    - financial_validation
+
+
+narrative_arc_validator:
+  implementation: deck_builder/narrative_arc_validator.py
+  rules:
+    slide_1_must_not_be_detailed_financial_table: true
+    request_decision_after_problem_solution_evidence: true
+    objection_preemption_before_ask: true
+    validate_narrative_arc_enum_from_slide_schema: true
+  project_structured_fields:
+    objection_preemption_map: projects.objection_preemption_map

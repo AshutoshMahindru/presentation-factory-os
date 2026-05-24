@@ -1,0 +1,110 @@
+model_list:
+  - model_name: bge-m3-embedding
+    litellm_params:
+      model: openai/bge-m3-embedding
+      api_base: http://vllm-bge-m3:8000/v1
+      api_key: os.environ/LOCAL_VLLM_API_KEY
+    model_info:
+      mode: embedding
+      always_on: true
+
+  - model_name: gemma-3-27b-it
+    litellm_params:
+      model: openai/gemma-3-27b-it
+      api_base: http://vllm-gemma:8000/v1
+      api_key: os.environ/LOCAL_VLLM_API_KEY
+    model_info:
+      mode: chat
+      local: true
+
+  - model_name: qwen2.5-vl-7b
+    litellm_params:
+      model: openai/qwen2.5-vl-7b
+      api_base: http://vllm-qwen-vl:8000/v1
+      api_key: os.environ/LOCAL_VLLM_API_KEY
+    model_info:
+      mode: vision
+      local: true
+
+  - model_name: deepseek-r1-distill-32b
+    litellm_params:
+      model: openai/deepseek-r1-distill-32b
+      api_base: http://vllm-deepseek:8000/v1
+      api_key: os.environ/LOCAL_VLLM_API_KEY
+    model_info:
+      mode: reasoning
+      local: true
+
+  - model_name: deepseek-r1
+    litellm_params:
+      model: deepseek/deepseek-r1
+      api_key: os.environ/DEEPSEEK_API_KEY
+    model_info:
+      mode: reasoning
+      remote_fallback: true
+
+  - model_name: qwen3-235b-a22b
+    litellm_params:
+      model: openrouter/qwen/qwen3-235b-a22b
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      mode: chat
+      remote_fallback: true
+
+  - model_name: qwen2.5-vl-72b
+    litellm_params:
+      model: openrouter/qwen/qwen2.5-vl-72b-instruct
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      mode: vision
+      remote_fallback: true
+
+router_settings:
+  routing_strategy: usage-based-routing-v2
+  fallbacks:
+    - deepseek-r1-distill-32b: [deepseek-r1]
+    - gemma-3-27b-it: [qwen3-235b-a22b]
+    - qwen2.5-vl-7b: [qwen2.5-vl-72b]
+  context_window_fallbacks: []
+  num_retries: 2
+  timeout: 120
+
+resource_rules:
+  - name: low_vram_reasoning_or_vision_to_api
+    if:
+      local_gpu_vram_available_mb_lt: 20000
+      model_modes: [reasoning, vision]
+    route_to: remote_fallback
+  - name: high_queue_spillover_narrative_fast
+    if:
+      local_queue_depth_gt: 10
+      model_modes: [chat]
+    route_to: remote_fallback
+  - name: embeddings_always_local
+    if:
+      model_modes: [embedding]
+    route_to: bge-m3-embedding
+
+litellm_settings:
+  success_callback: [postgres_callback]
+  failure_callback: [postgres_callback]
+  callbacks: [postgres_callback]
+  log_requests: true
+  log_responses: false
+  redact_user_api_key_info: true
+  drop_params: true
+
+rate_limits:
+  deepseek-r1:
+    rpm: 60
+    tpm: 200000
+  qwen3-235b-a22b:
+    rpm: 40
+    tpm: 160000
+  qwen2.5-vl-72b:
+    rpm: 20
+    tpm: 80000
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/LITELLM_DATABASE_URL

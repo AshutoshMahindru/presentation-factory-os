@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://presentation-factory-os.local/schemas/SlideJobDefinition.schema.json",
+  "title": "SlideJobDefinition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "slide_id",
+    "job",
+    "content",
+    "visual_quality",
+    "materiality"
+  ],
+  "properties": {
+    "slide_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "job": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "required_evidence"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "establish_market_size",
+            "show_growth_trajectory",
+            "present_team_credentials",
+            "request_decision",
+            "address_risk",
+            "compare_competitive_position",
+            "explain_unit_economics",
+            "show_capital_gate",
+            "define_strategic_path"
+          ]
+        },
+        "required_evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "objective": {
+          "type": "string"
+        },
+        "phase": {
+          "type": "string",
+          "enum": [
+            "intake",
+            "strategy",
+            "research",
+            "financial_model",
+            "narrative",
+            "visual_design",
+            "review"
+          ]
+        }
+      }
+    },
+    "content": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "headline",
+        "body",
+        "chart_id",
+        "evidence_refs"
+      ],
+      "properties": {
+        "headline": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "body": {
+          "type": "string",
+          "minLength": 1
+        },
+        "chart_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "financial_refs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Optional but recommended for any numeric assertion. Required by slide numeric assertion validator when numbers are present."
+        }
+      }
+    },
+    "visual_quality": {
+      "type": "string",
+      "enum": [
+        "code_generated",
+        "degraded",
+        "final_rendered"
+      ]
+    },
+    "provenance": {
+      "type": "object"
+    },
+    "materiality": {
+      "type": "string",
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ],
+      "description": "Materiality controls export gating when a fallback output is degraded. High and medium materiality slides cannot ship with degraded visuals."
+    },
+    "narrative_arc": {
+      "type": "string",
+      "enum": [
+        "problem_solution",
+        "hero_journey",
+        "compare_contrast",
+        "request_decision"
+      ],
+      "description": "Optional deterministic narrative architecture tag consumed by deck_builder/narrative_arc_validator.py."
+    }
+  }
+}

@@ -1,0 +1,144 @@
+version: 3.2.4
+name: financial_model_schema
+engines:
+- duckdb
+- postgres
+tables:
+  financial_cells:
+    columns:
+      project_id: uuid
+      scenario: text
+      cell_ref: text
+      label: text
+      value: numeric
+      unit: text
+      formula: text
+      source_refs: text_array
+      created_at: timestamptz
+      updated_at: timestamptz
+      ingestion_source_type: text
+      parser_provenance: json
+      phase_scope_version: integer
+      artifact_status: text
+    constraints:
+      primary_key:
+      - project_id
+      - cell_ref
+      - scenario
+      not_null:
+      - project_id
+      - scenario
+      - cell_ref
+      - label
+      - value
+      - formula
+      unique:
+      - - project_id
+        - scenario
+        - cell_ref
+      checks:
+      - formula_length_gt_zero
+      - value_is_finite
+      - parser_provenance_required_for_excel_xlsx
+      - parser_name_in_allow_list
+      - artifact_status_in_active_stale_archived_blocked
+  scenario_dependencies:
+    columns:
+      project_id: uuid
+      scenario: text
+      depends_on_scenario: text
+      dependency_type: text
+      rationale: text
+    constraints:
+      primary_key:
+      - project_id
+      - scenario
+      - depends_on_scenario
+      checks:
+      - no_self_dependency
+      - dependency_type_in:
+        - sensitivity
+        - downside
+        - upside
+        - base_clone
+        - manual_override
+  validation_rules:
+    columns:
+      rule_id: text
+      project_id: uuid
+      scenario: text
+      cell_ref: text
+      rule_type: text
+      expression: text
+      severity: text
+      message: text
+    constraints:
+      primary_key:
+      - project_id
+      - rule_id
+      checks:
+      - rule_type_in:
+        - range_check
+        - formula_integrity
+        - cross_scenario_consistency
+        - orphan_check
+        - source_reference
+      - severity_in:
+        - info
+        - warning
+        - blocking
+validation_pipeline:
+- step: deterministic_ingestion_ast
+  deterministic: true
+  blocks_on_failure: true
+  description: Excel/CSV/API/manual inputs must enter through the tool-server parser
+    contract; LLMs may not infer formulas.
+- step: formula_integrity
+  deterministic: true
+  blocks_on_failure: true
+  description: Parse formulas, verify dependencies, and reject hard-coded output values
+    without formula lineage.
+- step: range_check
+  deterministic: true
+  blocks_on_failure: true
+  description: Validate business ranges and unit consistency.
+- step: cross_scenario_consistency
+  deterministic: true
+  blocks_on_failure: true
+  description: Verify downside, base, and upside scenarios differ only through declared
+    dependencies.
+- step: orphan_check
+  deterministic: true
+  blocks_on_failure: true
+  description: Reject financial cells not connected to a scenario, formula dependency,
+    or slide reference.
+slide_integration:
+  numeric_assertion_rule:
+    if: body_contains_numeric_assertions
+    then: validator_must_verify_financial_refs_exist
+    failure_status: blocking
+  accepted_ref_format: financial_cells.cell_ref
+  examples:
+    valid:
+      body: Contribution margin improves to 38% by month 18.
+      financial_refs:
+      - FM!CM_M18_BASE
+    invalid:
+      body: Contribution margin improves to 38% by month 18.
+      financial_refs: []
+exports:
+  source_of_truth_table: financial_cells
+  export_only_if_validation_status: validated
+  formula_required: true
+  cell_ref_unique: true
+ingestion_contract:
+  spec_file: 23_Financial_Ingestion_Pipeline.yaml
+  excel_parser: openpyxl_with_formulas_lib
+  llm_may:
+  - suggest_business_labels
+  - suggest_scenario_tags
+  llm_may_not:
+  - author_formulas
+  - edit_formulas
+  - guess_cell_refs
+  - call_pandas_read_excel_directly

@@ -1,0 +1,81 @@
+services:
+  workflow-service:
+    build:
+      context: .
+      dockerfile: docker/workflow-service.Dockerfile
+    container_name: pfos-workflow-service-dev
+    ports:
+      - "8000:8000"
+    networks:
+      - pfos_service
+      - pfos_agent_runtime
+
+  retrieval-engine:
+    build:
+      context: .
+      dockerfile: docker/retrieval-engine.Dockerfile
+    container_name: pfos-retrieval-engine-dev
+    ports:
+      - "8002:8002"
+    networks:
+      - pfos_service
+      - pfos_agent_runtime
+
+  tool-server:
+    build:
+      context: .
+      dockerfile: docker/tool-server.Dockerfile
+    container_name: pfos-tool-server-dev
+    ports:
+      - "8003:8003"
+    networks:
+      - pfos_service
+      - pfos_agent_runtime
+
+  agent-service:
+    build:
+      context: .
+      dockerfile: docker/agent-service.Dockerfile
+    container_name: pfos-agent-service-dev
+    ports:
+      - "8001:8001"
+    environment:
+      RETRIEVAL_URL: http://retrieval-engine:8002
+      TOOL_SERVER_URL: http://tool-server:8003
+      LITELLM_URL: http://litellm-proxy:4000
+      WORKFLOW_URL: http://workflow-service:8000
+      LITELLM_MASTER_KEY: sk-local-dev
+    networks:
+      - pfos_agent_runtime
+
+  postgres:
+    image: postgres:16
+    container_name: pfos-postgres-dev
+    environment:
+      POSTGRES_DB: pfos
+      POSTGRES_USER: pfos
+      POSTGRES_PASSWORD: pfos_dev_password
+    networks:
+      - pfos_data
+
+  neo4j:
+    image: neo4j:5
+    container_name: pfos-neo4j-dev
+    environment:
+      NEO4J_AUTH: neo4j/pfos_neo4j_password
+    networks:
+      - pfos_data
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: pfos-qdrant-dev
+    networks:
+      - pfos_data
+
+networks:
+  pfos_data:
+    internal: true
+  pfos_service:
+    internal: true
+  pfos_agent_runtime:
+    internal: true

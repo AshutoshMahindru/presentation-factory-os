@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://presentation-factory-os.local/schemas/AudienceProfile.schema.json",
+  "title": "AudienceProfile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "decision_maker_type",
+    "risk_tolerance",
+    "familiarity_with_topic",
+    "known_objections",
+    "stakeholder_map"
+  ],
+  "properties": {
+    "decision_maker_type": {
+      "type": "string",
+      "enum": [
+        "ic_partner",
+        "cfo",
+        "ceo",
+        "board",
+        "technical_lead"
+      ]
+    },
+    "risk_tolerance": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "familiarity_with_topic": {
+      "type": "string",
+      "enum": [
+        "novice",
+        "informed",
+        "expert"
+      ]
+    },
+    "known_objections": {
+      "type": "array",
+      "minItems": 0,
+      "items": {
+        "type": "string",
+        "enum": [
+          "pricing",
+          "timing",
+          "team_risk",
+          "market_size",
+          "execution_risk",
+          "technical_risk",
+          "regulatory_risk",
+          "capital_intensity",
+          "competitive_position"
+        ]
+      }
+    },
+    "stakeholder_map": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role",
+          "concern"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "economic_buyer",
+              "technical_evaluator",
+              "risk_owner",
+              "sponsor",
+              "blocker",
+              "influencer"
+            ]
+          },
+          "concern": {
+            "type": "string",
+            "minLength": 1
+          },
+          "influence_level": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

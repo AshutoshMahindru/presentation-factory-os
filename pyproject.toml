@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "presentation-factory-os"
+version = "3.2.4"
+description = "Runnable repo-first AI OS for IC-grade presentations"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.111.0",
+  "uvicorn[standard]>=0.30.0",
+  "pydantic>=2.7.0",
+  "pyyaml>=6.0.1",
+  "jsonschema>=4.22.0",
+  "httpx>=0.27.0",
+  "python-dotenv>=1.0.1",
+  "psycopg[binary]>=3.2.0",
+  "neo4j>=5.20.0",
+  "qdrant-client>=1.9.0",
+  "openpyxl>=3.1.2",
+  "pytest>=8.2.0"
+]
+
+[tool.setuptools.packages.find]
+include = [
+  "api*",
+  "agents*",
+  "deck_builder*",
+  "evidence_graph*",
+  "financial_model*",
+  "jobs*",
+  "retrieval_engine*",
+  "system*",
+  "tool_server*"
+]
+exclude = [
+  "docs*",
+  "docker*",
+  "infra*",
+  "tests*",
+  "ui*"
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

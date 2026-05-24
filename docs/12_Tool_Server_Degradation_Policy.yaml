@@ -1,0 +1,124 @@
+version: 3.2.4
+name: tool_server_degradation_policy
+fallback_ladders:
+  charts:
+    sequence:
+    - echarts
+    - plotly
+    - matplotlib
+    - markdown_table_degraded
+    degradation_statuses:
+      echarts: code_generated
+      plotly: code_generated
+      matplotlib: code_generated
+      markdown_table_degraded: degraded
+    export_rule: degraded_blocks_export
+  diagrams:
+    sequence:
+    - mermaid
+    - d2
+    - graphviz
+    - ascii
+    - bullets
+    degradation_statuses:
+      mermaid: code_generated
+      d2: code_generated
+      graphviz: code_generated
+      ascii: degraded
+      bullets: degraded
+    export_rule: degraded_blocks_export_if_material_slide
+  tables:
+    sequence:
+    - duckdb
+    - pandas
+    - markdown
+    degradation_statuses:
+      duckdb: code_generated
+      pandas: code_generated
+      markdown: degraded
+    export_rule: degraded_blocks_export_if_financial_or_material
+  deck_export:
+    sequence:
+    - pptxgenjs
+    - python_pptx
+    - outline
+    degradation_statuses:
+      pptxgenjs: final_rendered
+      python_pptx: final_rendered
+      outline: degraded
+    export_rule: outline_never_final_export
+materiality_policy:
+  schema_source: 06_SlideJobDefinition.schema.json
+  allowed_values:
+  - high
+  - medium
+  - low
+  material_slides:
+  - high
+  - medium
+  non_material_slides:
+  - low
+  export_gate:
+    high: degraded_visuals_block_export
+    medium: degraded_visuals_block_export
+    low: degraded_visuals_allowed_with_warning_and_provenance
+blocking_rules:
+  degraded_visuals_in_deck:
+    blocks: export
+    severity: blocking
+    message: Degraded visuals cannot ship in the final deck.
+  financial_calculation_unvalidated:
+    blocks:
+    - approval
+    - export
+    severity: blocking
+    message: Financial calculations must pass deterministic validation.
+  source_attribution_missing:
+    blocks:
+    - review
+    - approval
+    - export
+    severity: blocking
+    message: Material claims require active sources.
+  sensitive_data_detected:
+    blocks:
+    - model_call
+    - export
+    severity: blocking
+    message: Sensitive data requires redaction or explicit classification clearance.
+  stale_artifact_due_to_retreat:
+    blocks: export
+    reason: No artifact with status stale_due_to_retreat may be exported.
+  pending_outbox_items:
+    blocks: phase_transition_and_export
+    reason: Cross-store side effects must be drained before transition/export.
+runtime_logging:
+  log_each_fallback_attempt: true
+  write_provenance: true
+  include_error_class: true
+  include_input_hash: true
+  include_output_hash: true
+retry_policy:
+  max_retries_per_tool: 2
+  retry_backoff_seconds:
+  - 1
+  - 5
+  retry_only_on:
+  - timeout
+  - transient_network_error
+  - renderer_unavailable
+
+
+ui_retreat_messaging:
+  stale_due_to_retreat:
+    display_severity: warning
+    user_message: This artifact was drafted before an upstream phase was revised and requires revalidation before it can be used for approval or export.
+    slide_specific_example: This slide was drafted before the financial model was revised and requires revalidation.
+    allowed_user_actions:
+    - view_stale_artifact
+    - duplicate_for_revision
+    - send_back_to_responsible_phase
+    blocked_user_actions:
+    - approve
+    - export
+    - mark_final

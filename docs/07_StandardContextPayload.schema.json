@@ -1,0 +1,197 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://presentation-factory-os.local/schemas/StandardContextPayload.schema.json",
+  "title": "StandardContextPayload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "request_id",
+    "query",
+    "routing_decision",
+    "items",
+    "provenance",
+    "confidence"
+  ],
+  "properties": {
+    "request_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "query": {
+      "type": "string",
+      "minLength": 1
+    },
+    "routing_decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "validation_metadata"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "semantic",
+            "graph",
+            "structured",
+            "hybrid"
+          ]
+        },
+        "validation_metadata": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "query_classification",
+            "forced_hybrid",
+            "escalation_reason"
+          ],
+          "properties": {
+            "query_classification": {
+              "type": "string",
+              "enum": [
+                "financial",
+                "strategic",
+                "narrative",
+                "visual",
+                "unknown"
+              ]
+            },
+            "forced_hybrid": {
+              "type": "boolean"
+            },
+            "escalation_reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "type",
+          "content",
+          "source_ref",
+          "confidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "claim",
+              "source",
+              "financial_cell",
+              "slide",
+              "project_state",
+              "design_token",
+              "note"
+            ]
+          },
+          "content": {
+            "type": "string"
+          },
+          "source_ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "metadata": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "retrieved_at",
+        "retrieval_engine_version",
+        "stores_queried"
+      ],
+      "properties": {
+        "retrieved_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "retrieval_engine_version": {
+          "type": "string"
+        },
+        "stores_queried": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "postgres",
+              "neo4j",
+              "qdrant"
+            ]
+          }
+        },
+        "trace_id": {
+          "type": "string"
+        }
+      }
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "gap_type",
+          "description"
+        ],
+        "properties": {
+          "gap_type": {
+            "type": "string",
+            "enum": [
+              "missing_source",
+              "low_confidence",
+              "contradiction",
+              "outdated",
+              "scope_mismatch"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "info",
+              "warning",
+              "blocking"
+            ]
+          }
+        }
+      }
+    },
+    "recommended_next_action": {
+      "type": "string"
+    }
+  }
+}

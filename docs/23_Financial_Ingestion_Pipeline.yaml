@@ -1,0 +1,48 @@
+version: 3.2.4
+name: financial_ingestion_pipeline
+sources:
+- excel_xlsx
+- csv
+- manual_entry
+- api
+deterministic_boundary:
+  parser: openpyxl_with_formulas_lib
+  tool_server_endpoint: POST /tools/parse_excel_ast
+  outputs:
+  - cell_ref
+  - sheet_name
+  - raw_formula_string
+  - value
+  - dependencies
+  - parser_name
+  - parser_version
+  - workbook_hash
+  llm_role: LLM may suggest business-logic labels and scenario tags. LLM may NOT author,
+    edit, or guess formulas. LLM receives only deterministic parser output as context.
+validation_gates:
+- gate: ast_parsable
+  blocks: true
+- gate: no_circular_references
+  blocks: true
+- gate: all_deps_in_same_sheet_or_declared
+  blocks: true
+- gate: cell_ref_matches_project_namespace
+  blocks: true
+- gate: parser_provenance_allowlisted
+  blocks: true
+agent_constraints:
+  financial_agent_must_use: ToolClient.call_tool("parse_excel_ast")
+  banned_direct_methods:
+  - pandas.read_excel
+  - xlwings.Book
+  - openpyxl.load_workbook inside agents/
+  allowed_parser_location: tool_server only
+parser_provenance_required_fields:
+- parser_name
+- parser_version
+- workbook_hash
+- parsed_at
+- tool_call_id
+ci_tests:
+- test_financial_ingestion_requires_ast.py
+- test_excel_parser_preserves_formulas.py

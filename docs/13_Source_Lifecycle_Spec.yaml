@@ -1,0 +1,94 @@
+version: 3.2.4
+name: source_lifecycle_spec
+event_sources:
+  manual_api:
+    endpoint: POST /sources/events
+    auth: user_session_or_service_token
+  scheduled_scan:
+    cron: 0 3 * * 1
+    description: Weekly source freshness and status scan.
+  webhook:
+    endpoint: POST /webhooks/sources
+    auth: hmac
+    hmac_required: true
+source_statuses:
+- active
+- retracted
+- superseded
+- under_review
+classification_levels:
+- public
+- confidential
+- restricted
+- pii
+handlers:
+  on_retracted:
+    execution_mode: async_queued
+    queue_table: source_lifecycle_events
+    batch_size: 50
+    steps:
+    - mark_source_retracted
+    - enqueue_claim_cascade
+    - optimistically_block_affected_projects
+    - write_source_lifecycle_event
+    - write_provenance
+    job_runner_steps:
+    - process_claims_in_batches_of_50
+    - remove_retracted_edges_when_remaining_active_support_gte_2
+    - mark_claims_unsupported_when_remaining_active_support_lt_2
+    - mark_slides_blocked_for_revision
+    - confirm_affected_projects_blocked_or_unblock_if_clean
+    - write_outbox_result
+    - write_provenance
+    maximum_cascade_latency_seconds: 30
+    sla_policy: fixed_operational_sla_for_standard_cascade
+    sla_claim_count_reference: 500
+    sla_note: >
+      The 30-second SLA is the operational maximum for a standard 500-claim retraction cascade.
+      Larger cascades must emit progress metrics and remain blocked until complete; no affected project may transition or export while queue rows remain unprocessed.
+    sla_violation_action: alert_and_retry
+  on_updated:
+    steps:
+    - create_versioned_source_node
+    - mark_old_source_superseded
+    - migrate_edges_to_new_source_when_content_hash_confirms_support
+    - mark_uncertain_edges_under_review
+    - write_source_lifecycle_event
+    - write_provenance
+  on_classification_changed:
+    steps:
+    - update_source_classification
+    - if_new_classification_is_restricted_or_pii: trigger_security_alert
+    - upgrade_project_review_level
+    - block_remote_model_context_if_required
+    - write_source_lifecycle_event
+    - write_provenance
+job_config:
+  mode: event_driven_plus_weekly_cron
+  retries: 3
+  retry_backoff_seconds:
+  - 5
+  - 30
+  - 120
+  provenance_required: true
+  idempotency_key: source_id_event_type_source_version
+  retraction_batch_size: 50
+  max_retraction_retries: 5
+  outbox_poll_interval_seconds: 5
+  idempotency_required: true
+revision_block_policy:
+  affected_project_phase_behavior:
+    intake: allow_continue_after_source_fix
+    strategy: allow_retreat_to_intake_or_fix_in_place
+    research: retreat_to_research_required
+    financial_model: block_model_validation
+    narrative: block_visual_design_transition
+    visual_design: block_review_transition
+    review: retreat_required
+    approved: revoke_approval_and_return_to_review
+    exported: critical_alert_and_export_retraction_review
+outbox_contract:
+  workflow_service: appends cross-store side effects to Postgres outbox only
+  job_runner: polls outbox, executes idempotent Neo4j writes, marks processed
+  failure_behavior: phase transitions blocked while project has failed or unprocessed
+    outbox rows

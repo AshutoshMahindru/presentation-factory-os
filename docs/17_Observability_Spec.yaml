@@ -1,0 +1,183 @@
+version: 3.2.4
+name: observability_spec
+metrics:
+  phase_transition_latency_seconds:
+    type: histogram
+    labels:
+    - project_id
+    - from_phase
+    - to_phase
+    - transition_kind
+  rubric_score_by_phase:
+    type: gauge
+    labels:
+    - project_id
+    - phase
+    - dimension
+  evidence_coverage_ratio:
+    type: gauge
+    labels:
+    - project_id
+    - phase
+  retrieval_routing_misclassification_count:
+    type: counter
+    labels:
+    - project_id
+    - expected_mode
+    - actual_mode
+    - query_classification
+  human_override_rate:
+    type: gauge
+    labels:
+    - phase
+    - role
+  model_fallback_count:
+    type: counter
+    labels:
+    - from_model
+    - to_model
+    - reason
+  gpu_oom_fallback_count:
+    type: counter
+    labels:
+    - local_model
+    - fallback_model
+  source_retraction_cascade_duration_seconds:
+    type: summary
+    labels:
+    - project_id
+    - source_id
+  project_health_score:
+    type: gauge
+    labels:
+    - project_id
+    formula: '0.4 * evidence_coverage_ratio + 0.3 * (1 - open_retraction_count / total_sources)
+      + 0.2 * (1 - human_override_rate) + 0.1 * approval_velocity_per_day
+
+      '
+  open_retraction_count:
+    type: gauge
+    labels:
+    - project_id
+  approval_velocity_days:
+    type: histogram
+    labels:
+    - project_id
+    - phase
+  outbox_lag_seconds:
+    type: gauge
+    labels:
+    - project_id
+    - operation_type
+  outbox_failure_count:
+    type: counter
+    labels:
+    - project_id
+    - operation_type
+  source_retraction_queue_depth:
+    type: gauge
+    labels:
+    - project_id
+    - source_id
+  retraction_batch_latency_seconds:
+    type: histogram
+    labels:
+    - project_id
+    - source_id
+    - batch_size
+traces:
+  table: phase_traces
+  required_fields:
+  - project_id
+  - phase
+  - trace_id
+  - span_name
+  - service_name
+  - started_at
+  - ended_at
+  - duration_ms
+  - status
+  - metadata
+alerts:
+  evidence_coverage_below_half:
+    condition: evidence_coverage_ratio < 0.5
+    severity: warning
+    action: notify_project_owner
+  routing_misclassification:
+    condition: retrieval_routing_misclassification_count > 0
+    severity: critical
+    action: block_phase_until_reviewed
+  high_human_override_rate:
+    condition: human_override_rate > 0.4
+    severity: warning
+    action: schedule_rubric_review
+  source_retraction_affecting_exported_deck:
+    condition: source_status_retracted AND project_phase_exported
+    severity: critical
+    action: notify_ic_owner_and_block_reuse
+  outbox_stalled:
+    condition: outbox_lag_seconds > 30
+    severity: critical
+    action: block_phase_until_outbox_drained
+  retraction_queue_stalled:
+    condition: source_retraction_queue_depth > 0 for 30 seconds
+    severity: critical
+    action: alert_and_retry_batch_job
+endpoints:
+  metrics:
+    path: /metrics
+    format: prometheus
+  traces:
+    path: /traces/{project_id}
+    method: GET
+  health:
+    path: /health
+    method: GET
+  readiness:
+    path: /ready
+    method: GET
+  routing_audit:
+    path: /observability/retrieval-routing/{project_id}
+    method: GET
+  rubric_audit:
+    path: /observability/rubric/{project_id}/{phase}
+    method: GET
+  project_health:
+    path: /health/projects/{project_id}
+    method: GET
+    implementation: api/health.py
+    returns:
+    - health_score
+    - evidence_coverage_ratio
+    - open_retractions
+    - days_in_current_phase
+    - approval_velocity
+    - blocking_gates_status
+  outbox_status:
+    path: /health/projects/{project_id}/outbox
+    method: GET
+    returns:
+    - unprocessed_count
+    - failed_count
+    - oldest_unprocessed_age_seconds
+logging:
+  structured_json: true
+  include_trace_id: true
+  include_project_id: true
+  redact_pii: true
+  log_model_prompts: hash_only
+  log_model_responses: false
+
+
+load_test_thresholds:
+  outbox_queue:
+    scenario: 50 concurrent unprocessed outbox items with transient Neo4j outage
+    expected_behavior: retry_with_backoff_and_drain_after_neo4j_recovers
+    max_drain_time_seconds_after_recovery: 60
+    max_failed_items_after_recovery: 0
+  source_retraction_queue:
+    scenario: 100 concurrent source retractions, each with up to 500 supported claims
+    expected_behavior: process_in_batches_of_50_without_unbounded_lock_contention
+    max_initial_block_time_seconds: 5
+    max_standard_cascade_latency_seconds: 30
+    max_queue_stall_alert_seconds: 30

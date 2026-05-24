@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://presentation-factory-os.local/schemas/DesignTokens.schema.json",
+  "title": "DesignTokens",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "namespace",
+    "name",
+    "type",
+    "value"
+  ],
+  "properties": {
+    "namespace": {
+      "type": "string",
+      "enum": [
+        "color",
+        "typography",
+        "spacing",
+        "layout",
+        "chart",
+        "brand",
+        "component"
+      ]
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "color",
+        "font_family",
+        "font_size",
+        "spacing",
+        "radius",
+        "shadow",
+        "dimension",
+        "boolean",
+        "string",
+        "number",
+        "object"
+      ]
+    },
+    "value": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "object"
+        },
+        {
+          "type": "array"
+        }
+      ]
+    },
+    "unit": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "px",
+        "pt",
+        "rem",
+        "em",
+        "%",
+        "hex",
+        "ratio",
+        null
+      ]
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "system_default",
+        "brand_guideline",
+        "human_override",
+        "generated"
+      ]
+    },
+    "description": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 500
+    }
+  }
+}
