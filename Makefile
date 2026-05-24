@@ -1,4 +1,4 @@
-.PHONY: compile test no-agent-db-imports validate validate-json validate-yaml docker-ps docker-up docker-down docker-reset-dev docker-doctor validate-live validate-sql-live validate-cypher-live
+.PHONY: compile test no-agent-db-imports validate validate-json validate-yaml smoke-source-lifecycle-outbox docker-ps docker-up docker-down docker-reset-dev docker-doctor validate-live validate-sql-live validate-cypher-live
 
 PYTHON ?= python3
 PYTEST ?= $(PYTHON) -m pytest
@@ -18,6 +18,9 @@ test:
 
 no-agent-db-imports:
 	$(PYTHON) scripts/check_no_agent_db_imports.py
+
+smoke-source-lifecycle-outbox:
+	$(PYTHON) scripts/source_lifecycle_outbox_smoke.py
 
 validate-json:
 	$(PYTHON) scripts/validate_json_schemas.py

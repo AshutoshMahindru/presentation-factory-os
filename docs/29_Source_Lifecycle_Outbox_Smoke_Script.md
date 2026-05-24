@@ -19,6 +19,15 @@ Pass the database URL explicitly:
 python scripts/source_lifecycle_outbox_smoke.py --database-url postgresql://pfos:pfos@localhost:5432/pfos
 ```
 
+Run through the repository Makefile target:
+
+```bash
+DATABASE_URL=postgresql://pfos:pfos@localhost:5432/pfos make smoke-source-lifecycle-outbox
+```
+
+The Makefile target uses the repository `PYTHON` variable, which defaults to
+`python3`.
+
 If `--database-url` is omitted, the script checks environment variables in this
 order:
 

@@ -1,0 +1,16 @@
+step_id: 62
+name: source_lifecycle_outbox_smoke_make_target
+branch: codex/step-62-source-lifecycle-outbox-smoke-make-target
+objective: >
+  Add a Makefile target for the read-only source lifecycle and outbox smoke
+  script, document its use, and keep smoke script behavior unchanged.
+commit_message: Add source lifecycle outbox smoke make target
+validation_commands:
+  - make -n smoke-source-lifecycle-outbox
+  - python3 -m compileall scripts
+  - python3 -m pytest tests/unit/test_source_lifecycle_outbox_smoke.py -vv
+  - make validate
+files_expected:
+  - Makefile
+  - docs/29_Source_Lifecycle_Outbox_Smoke_Script.md
+  - .pfos/baby_steps/062_source_lifecycle_outbox_smoke_make_target.yaml
