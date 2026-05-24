@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import argparse
+import sys
 from dataclasses import dataclass
 
 from system.outbox_repository import OutboxRepository
@@ -14,6 +16,13 @@ class SourceRetractionJobResult:
     scanned_count: int
     enqueued_count: int
     failed_count: int
+
+    def as_cli_line(self) -> str:
+        return (
+            f"scanned_source_retraction_events={self.scanned_count} "
+            f"enqueued_source_retraction_events={self.enqueued_count} "
+            f"failed_source_retraction_events={self.failed_count}"
+        )
 
 
 class SourceRetractionJob:
@@ -82,3 +91,27 @@ class SourceRetractionJob:
             event_id=event.event_id,
             processing_status="processed",
         )
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Run one source retraction job pass.")
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=50,
+        help="Maximum pending retraction lifecycle events to scan, 1-50.",
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        result = SourceRetractionJob().run_once(limit=args.limit)
+    except Exception as exc:
+        print(f"source_retraction_job_error={exc}", file=sys.stderr)
+        return 1
+
+    print(result.as_cli_line())
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

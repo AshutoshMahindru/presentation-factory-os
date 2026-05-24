@@ -1,0 +1,22 @@
+step_id: 57
+name: source_retraction_cli_wrappers
+branch: codex/step-57-source-retraction-cli-wrappers
+objective: >
+  Add deterministic CLI/module entrypoints and runbook coverage for the source
+  retraction job and outbox worker while preserving existing outbox CLI behavior
+  and integration contracts.
+commit_message: Add source retraction CLI wrappers
+validation_commands:
+  - python -m compileall system jobs api
+  - pytest tests/unit/test_source_retraction_job.py -vv
+  - pytest tests/unit/test_outbox_worker.py -vv
+  - pytest tests/integration/test_outbox_eventual_consistency.py -vv
+  - pytest tests/integration/test_outbox_neo4j_failure_retry_backoff.py -vv
+  - pytest tests/integration/test_outbox_neo4j_side_effect.py -vv
+  - pytest tests/integration/test_workflow_outbox_gate.py -vv
+  - make validate
+files_expected:
+  - jobs/source_retraction_job.py
+  - docs/26_Source_Retraction_Worker_Runbook.md
+  - tests/unit/test_source_retraction_job.py
+  - .pfos/baby_steps/057_source_retraction_cli_wrappers.yaml
