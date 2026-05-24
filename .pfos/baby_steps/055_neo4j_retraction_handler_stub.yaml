@@ -1,0 +1,23 @@
+step_id: 55
+name: neo4j_retraction_handler_stub
+branch: baby-step-55-neo4j-retraction-handler-stub
+objective: >
+  Add a deterministic Neo4j source retraction handler stub for source_retracted
+  outbox operations while preserving Step 54 legacy outbox worker handlers and
+  integration-test compatibility.
+commit_message: Add Neo4j source retraction handler stub
+validation_commands:
+  - python -m compileall system jobs api
+  - pytest tests/unit/test_neo4j_retraction_handler.py -vv
+  - pytest tests/unit/test_outbox_worker.py -vv
+  - pytest tests/integration/test_outbox_eventual_consistency.py -vv
+  - pytest tests/integration/test_outbox_neo4j_failure_retry_backoff.py -vv
+  - pytest tests/integration/test_outbox_neo4j_side_effect.py -vv
+  - pytest tests/integration/test_workflow_outbox_gate.py -vv
+  - make validate
+files_expected:
+  - system/neo4j_retraction_handler.py
+  - jobs/outbox_worker.py
+  - tests/unit/test_neo4j_retraction_handler.py
+  - tests/unit/test_outbox_worker.py
+  - .pfos/baby_steps/055_neo4j_retraction_handler_stub.yaml

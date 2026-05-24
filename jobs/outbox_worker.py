@@ -5,6 +5,7 @@ import subprocess
 from dataclasses import dataclass
 from typing import Callable
 
+from system.neo4j_retraction_handler import Neo4jSourceRetractionHandler
 from system.outbox_repository import OutboxRepository, PendingOutboxRow
 
 
@@ -125,23 +126,6 @@ class Neo4jProjectNodeHandler:
         return str(value).replace("\\", "\\\\").replace("'", "\\'")
 
 
-class NoopSourceRetractionHandler:
-    """
-    Temporary source_retracted handler for Step 54.
-
-    Step 55 will replace this with the explicit Neo4j source retraction handler.
-    """
-
-    def __call__(self, row: PendingOutboxRow) -> None:
-        if os.environ.get("PFOS_FORCE_OUTBOX_FAILURE") == "1":
-            raise RuntimeError("Forced outbox operation failure")
-
-        required = {"source_lifecycle_event_id", "project_id", "source_id", "event_type"}
-        missing = sorted(required - set(row.payload))
-        if missing:
-            raise ValueError(f"source_retracted payload missing keys: {missing}")
-
-
 class OutboxWorker:
     """
     Deterministic outbox worker.
@@ -165,7 +149,7 @@ class OutboxWorker:
             "claim_updated": project_handler,
             "phase_transition_side_effect": project_handler,
             "retreat_archive_downstream": project_handler,
-            "source_retracted": NoopSourceRetractionHandler(),
+            "source_retracted": Neo4jSourceRetractionHandler(),
         }
 
     def run_once(self, target_store: str = "neo4j", limit: int = 50) -> OutboxWorkerResult:

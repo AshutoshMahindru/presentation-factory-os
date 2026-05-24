@@ -159,3 +159,50 @@ def test_neo4j_project_handler_uses_id_property_and_payload_fields(monkeypatch) 
     assert "p.name = 'Demo Project'" in cypher
     assert "p.current_phase = 'strategy'" in cypher
     assert "project_id:" not in cypher
+
+
+def test_outbox_worker_default_source_retracted_handler_is_contract_validator() -> None:
+    row = PendingOutboxRow(
+        outbox_id="outbox-source-retracted-1",
+        project_id="project-1",
+        target_store="neo4j",
+        operation_type="source_retracted",
+        payload={
+            "source_lifecycle_event_id": "event-1",
+            "project_id": "project-1",
+            "source_id": "source-1",
+            "event_type": "retracted",
+        },
+        error_count=0,
+    )
+    repository = FakeOutboxRepository([row])
+    worker = OutboxWorker(outbox_repository=repository)
+
+    result = worker.run_once()
+
+    assert result.scanned_count == 1
+    assert result.processed_count == 1
+    assert result.failed_count == 0
+    assert repository.processed == ["outbox-source-retracted-1"]
+    assert repository.failed == []
+
+
+def test_outbox_worker_default_source_retracted_handler_fails_invalid_payload() -> None:
+    row = PendingOutboxRow(
+        outbox_id="outbox-source-retracted-2",
+        project_id="project-1",
+        target_store="neo4j",
+        operation_type="source_retracted",
+        payload={"bad": "payload"},
+        error_count=0,
+    )
+    repository = FakeOutboxRepository([row])
+    worker = OutboxWorker(outbox_repository=repository)
+
+    result = worker.run_once()
+
+    assert result.scanned_count == 1
+    assert result.processed_count == 0
+    assert result.failed_count == 1
+    assert repository.processed == []
+    assert "missing required keys" in repository.failed[0]["last_error"]
