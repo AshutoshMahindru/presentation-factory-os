@@ -33,6 +33,7 @@ class ExportGate:
         self._check_source_attribution(slides, blocking)
         self._check_sensitive_data(deck, blocking)
         self._check_stale_artifacts(deck, blocking)
+        self._check_source_retraction_cascade(deck, blocking)
         self._check_outbox(deck, blocking)
 
         return ExportGateResult(
@@ -67,6 +68,10 @@ class ExportGate:
         if deck.get("financial_validation_status") not in {None, "validated"}:
             blocking.append("Financial calculations must pass deterministic validation.")
 
+        unsupported_claims = int(deck.get("unsupported_financial_claim_count", 0) or 0)
+        if unsupported_claims > 0:
+            blocking.append("Unsupported financial claims cannot be exported.")
+
     def _check_source_attribution(self, slides: list[dict[str, Any]], blocking: list[str]) -> None:
         for slide in slides:
             slide_id = slide.get("slide_id", "<unknown>")
@@ -78,7 +83,7 @@ class ExportGate:
                 blocking.append(f"{slide_id}: material claims require active sources.")
 
     def _check_sensitive_data(self, deck: dict[str, Any], blocking: list[str]) -> None:
-        if deck.get("sensitive_data_detected") is True:
+        if deck.get("sensitive_data_detected") is True or deck.get("pii_exposure_detected") is True:
             blocking.append("Sensitive data requires redaction or explicit classification clearance.")
 
     def _check_stale_artifacts(self, deck: dict[str, Any], blocking: list[str]) -> None:
@@ -86,6 +91,10 @@ class ExportGate:
             artifact_id = artifact.get("id", "<unknown>")
             if artifact.get("status") == "stale_due_to_retreat":
                 blocking.append(f"{artifact_id}: stale_due_to_retreat artifacts cannot be exported.")
+
+    def _check_source_retraction_cascade(self, deck: dict[str, Any], blocking: list[str]) -> None:
+        if int(deck.get("pending_source_retraction_count", 0) or 0) > 0:
+            blocking.append("Pending source retraction cascade must complete before export.")
 
     def _check_outbox(self, deck: dict[str, Any], blocking: list[str]) -> None:
         if int(deck.get("unprocessed_outbox_count", 0) or 0) > 0:
