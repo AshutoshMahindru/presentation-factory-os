@@ -78,6 +78,14 @@ The report includes:
   `operation_type`
 - oldest pending or failed `source_lifecycle_events` row, if one exists
 - oldest unprocessed or failed `outbox` row, if one exists
+- bounded queue diagnostics readouts for pending or failed
+  `source_lifecycle_events` rows and unprocessed or failed `outbox` rows
+
+Use `--details-limit` to control diagnostic readout length:
+
+```bash
+python scripts/source_lifecycle_outbox_smoke.py --details-limit 10
+```
 
 Example:
 
@@ -99,6 +107,12 @@ Oldest pending or failed source_lifecycle_events row:
   id=... project_id=... source_id=... event_type=retracted processing_status=pending error_count=0 created_at=... last_error=null
 
 Oldest unprocessed or failed outbox row:
+  id=... project_id=... target_store=neo4j operation_type=source_retracted processed=false error_count=1 created_at=... last_error=...
+
+Pending or failed source_lifecycle_events readout:
+  id=... project_id=... source_id=... event_type=retracted processing_status=pending error_count=0 created_at=... last_error=null
+
+Unprocessed or failed outbox readout:
   id=... project_id=... target_store=neo4j operation_type=source_retracted processed=false error_count=1 created_at=... last_error=...
 
 Smoke status: PASS required tables present

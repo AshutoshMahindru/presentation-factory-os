@@ -157,7 +157,42 @@ def test_collect_snapshot_and_render_report_include_operational_groups() -> None
     assert "id=event-1 project_id=project-1 source_id=source-1" in report
     assert "id=outbox-1 project_id=project-1 target_store=neo4j" in report
     assert "created_at=2026-05-25T03:30:00+00:00" in report
+    assert "Pending or failed source_lifecycle_events readout:" in report
+    assert "Unprocessed or failed outbox readout:" in report
     assert "Smoke status: PASS required tables present" in report
+
+
+def test_collect_snapshot_passes_details_limit_to_diagnostic_queries() -> None:
+    query = FakeQueryExecutor(
+        {
+            "information_schema.tables": [
+                {"table_name": "projects"},
+                {"table_name": "source_lifecycle_events"},
+                {"table_name": "outbox"},
+            ],
+            "FROM source_lifecycle_events\nGROUP BY": [],
+            "FROM outbox\nGROUP BY": [],
+            "WHERE processing_status IN ('pending', 'failed')": [],
+            "WHERE processed = FALSE": [],
+        }
+    )
+
+    smoke.collect_snapshot(query, details_limit=7)
+
+    assert query.calls[-2][1] == (7,)
+    assert query.calls[-1][1] == (7,)
+
+
+def test_collect_snapshot_rejects_invalid_details_limit() -> None:
+    query = FakeQueryExecutor({})
+
+    for details_limit in (0, 51):
+        try:
+            smoke.collect_snapshot(query, details_limit=details_limit)
+        except ValueError as exc:
+            assert str(exc) == "details_limit must be between 1 and 50"
+        else:
+            raise AssertionError("expected invalid details limit to fail")
 
 
 def test_all_smoke_sql_is_select_only() -> None:
