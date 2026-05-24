@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from dataclasses import dataclass
+from typing import Any
 
 
 COMPOSE_FILE = "docker-compose.apps.yaml"
@@ -16,15 +18,82 @@ class OutboxStatus:
     oldest_unprocessed_age_seconds: int | None
 
 
+@dataclass(frozen=True)
+class OutboxRow:
+    outbox_id: str
+    project_id: str
+    target_store: str
+    operation_type: str
+    processed: bool
+
+
 class OutboxRepository:
     """
-    Deterministic Postgres-backed outbox status reader.
+    Deterministic Postgres-backed outbox repository.
 
     A project is blocked when it has any unprocessed outbox rows or any
     unprocessed rows with error_count > 0. This repository centralizes the
     outbox blocking query so workflow transitions, health endpoints, and
     export gates do not drift.
     """
+
+    ALLOWED_TARGET_STORES = {"neo4j"}
+    ALLOWED_OPERATION_TYPES = {
+        "source_retracted",
+        "claim_updated",
+        "phase_transition_side_effect",
+        "retreat_archive_downstream",
+    }
+
+    def create_outbox_row(
+        self,
+        project_id: str,
+        target_store: str,
+        operation_type: str,
+        payload: dict[str, Any],
+    ) -> OutboxRow:
+        if target_store not in self.ALLOWED_TARGET_STORES:
+            raise ValueError(f"Unsupported target_store: {target_store}")
+
+        if operation_type not in self.ALLOWED_OPERATION_TYPES:
+            raise ValueError(f"Unsupported operation_type: {operation_type}")
+
+        payload_json = self._json(payload)
+
+        sql = f"""
+        INSERT INTO outbox (
+          project_id,
+          target_store,
+          operation_type,
+          payload,
+          processed
+        )
+        VALUES (
+          '{self._sql(project_id)}',
+          '{self._sql(target_store)}',
+          '{self._sql(operation_type)}',
+          '{payload_json}'::jsonb,
+          FALSE
+        )
+        RETURNING id, project_id, target_store, operation_type, processed;
+        """
+
+        result = self._psql(sql)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr)
+
+        line = result.stdout.strip()
+        parts = [part.strip() for part in line.split("|")]
+        if len(parts) != 5:
+            raise RuntimeError(f"Unexpected outbox insert result: {result.stdout!r}")
+
+        return OutboxRow(
+            outbox_id=parts[0],
+            project_id=parts[1],
+            target_store=parts[2],
+            operation_type=parts[3],
+            processed=parts[4].lower() in {"t", "true"},
+        )
 
     def get_project_outbox_status(self, project_id: str) -> OutboxStatus:
         sql = f"""
@@ -105,6 +174,9 @@ class OutboxRepository:
             stderr=subprocess.PIPE,
             check=False,
         )
+
+    def _json(self, value: dict[str, Any]) -> str:
+        return self._sql(json.dumps(value, sort_keys=True))
 
     def _parse_int(self, value: str) -> int:
         if value == "":

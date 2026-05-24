@@ -96,3 +96,38 @@ def test_outbox_repository_sql_is_project_scoped_and_uses_outbox_table() -> None
     assert "project_id = 'project-with-''quote'" in captured["sql"]
     assert "processed = FALSE" in captured["sql"]
     assert "error_count > 0" in captured["sql"]
+
+
+def test_outbox_repository_creates_outbox_row() -> None:
+    from system.outbox_repository import OutboxRepository
+
+    repository = OutboxRepository()
+    captured: dict[str, str] = {}
+
+    class FakeResult:
+        returncode = 0
+        stdout = "outbox-1|project-1|neo4j|source_retracted|f\n"
+        stderr = ""
+
+    def fake_psql(sql: str) -> FakeResult:
+        captured["sql"] = sql
+        return FakeResult()
+
+    repository._psql = fake_psql  # type: ignore[method-assign]
+
+    row = repository.create_outbox_row(
+        project_id="project-1",
+        target_store="neo4j",
+        operation_type="source_retracted",
+        payload={"source_id": "source-1"},
+    )
+
+    assert row.outbox_id == "outbox-1"
+    assert row.project_id == "project-1"
+    assert row.target_store == "neo4j"
+    assert row.operation_type == "source_retracted"
+    assert row.processed is False
+
+    assert "INSERT INTO outbox" in captured["sql"]
+    assert "'source_retracted'" in captured["sql"]
+    assert '"source_id": "source-1"' in captured["sql"]

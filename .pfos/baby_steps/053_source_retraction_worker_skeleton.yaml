@@ -1,0 +1,20 @@
+step_id: 53
+name: source_retraction_worker_skeleton
+branch: baby-step-53-source-retraction-worker-skeleton
+objective: >
+  Add a deterministic source retraction worker skeleton that claims pending
+  retracted source lifecycle events, enqueues Neo4j retraction cascade outbox
+  work, and updates lifecycle event processing status.
+commit_message: Add source retraction worker skeleton
+validation_commands:
+  - python -m compileall system jobs api
+  - pytest tests/unit/test_source_lifecycle_event_repository.py -vv
+  - pytest tests/unit/test_outbox_repository.py -vv
+  - pytest tests/unit/test_source_retraction_job.py -vv
+  - make validate
+files_expected:
+  - system/source_lifecycle_event_repository.py
+  - system/outbox_repository.py
+  - jobs/source_retraction_job.py
+  - tests/unit/test_source_retraction_job.py
+  - .pfos/baby_steps/053_source_retraction_worker_skeleton.yaml
