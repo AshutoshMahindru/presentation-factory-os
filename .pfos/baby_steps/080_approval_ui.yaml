@@ -1,0 +1,21 @@
+step_id: 80
+name: approval_ui
+branch: codex/step-80-approval-ui
+objective: >
+  Add a read-only operator approval UI backed by the existing approval status
+  API contract, showing quorum status, decision counts, missing roles, and
+  escalation state without changing backend behavior.
+constraints:
+  - Keep baby-step YAML metadata-only.
+  - Do not modify API behavior.
+  - Do not modify Docker, jobs, source lifecycle, outbox worker, or deck/export behavior.
+  - Do not implement export readiness UI.
+commit_message: Add approval UI
+validation_commands:
+  - python3 -m compileall api system
+  - make validate
+files_expected:
+  - ui/app/approvals/page.tsx
+  - ui/components/ApprovalLedger.tsx
+  - docs/34_UI_Operator_Experience_Plan.md
+  - .pfos/baby_steps/080_approval_ui.yaml

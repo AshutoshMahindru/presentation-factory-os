@@ -44,9 +44,33 @@ readiness contract before the deck/export API surface exists.
   `getProjectControlPlaneHealth` types. It surfaces outbox queue state, source
   retraction queue state, hard-gate status, and an optional approval snapshot
   without adding API behavior.
-- Step 80 can build approval UI from `getApprovalStatus` and later add approval
-  submission helpers in a separate baby step.
+- Step 80 adds the operator-facing approval UI from `getApprovalStatus`. It
+  renders the current approval ledger snapshot, quorum state, missing roles,
+  decision counts, and escalation state without adding approval submission or
+  changing backend behavior.
 - Step 81 can use outbox, source-retraction, and hard-gate helper types for
   hard-gate and queue status UI.
 - Step 82 should wait for the promoted deck/export readiness API surface before
   adding export readiness UI.
+
+## Step 80 Approval UI
+
+`ui/app/approvals/page.tsx` provides a read-only operator page for inspecting a
+project approval phase. Operators enter a project ID, select the phase, and load
+the existing `GET /projects/{project_id}/approvals/status/{phase}` contract via
+the Step 78 API client.
+
+`ui/components/ApprovalLedger.tsx` is the reusable presentation component for
+that response. It shows:
+
+- quorum status and decision rule
+- required approvals and counted decision entries
+- approvals, rejections, abstentions, and changes-requested counts
+- missing roles from the quorum evaluator
+- escalation status, escalation reason, and blocking rejection state
+- explicit empty, loading, and error states
+
+The current API returns a phase-scoped approval status snapshot rather than
+actor-level approval rows. Step 80 therefore presents the ledger as decision
+summary rows and leaves approval submission, actor-level browsing, and export
+readiness UI for later steps with promoted API contracts.
