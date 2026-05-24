@@ -1,0 +1,27 @@
+step_id: 81
+name: hard_gate_queue_status_ui
+branch: codex/step-81-hard-gate-queue-status-ui
+objective: >
+  Add read-only operator-facing UI components for hard-gate pass, fail, and
+  blocked state plus queue status visibility for pending and failed outbox
+  status, source retraction cascades, source lifecycle blockers exposed by the
+  current UI contract, and stale artifact warnings.
+constraints:
+  - Keep baby-step YAML metadata-only.
+  - Do not modify backend API behavior.
+  - Do not modify Docker, jobs, source lifecycle job behavior, outbox worker behavior, database schema, or deck/export behavior.
+  - Do not weaken hard-gate, outbox, source-retraction, or stale-artifact semantics.
+  - Do not implement export readiness UI before Step 82.
+commit_message: Add hard gate and queue status UI
+validation_commands:
+  - npm test or npm lint if configured
+  - python3 -m compileall api system
+  - make validate
+files_expected:
+  - ui/components/ProjectHealth.tsx
+  - ui/components/QueueStatusPanel.tsx
+  - ui/components/HardGateStatusPanel.tsx
+  - ui/components/StaleArtifactNotice.tsx
+  - ui/lib/api.ts
+  - docs/34_UI_Operator_Experience_Plan.md
+  - .pfos/baby_steps/081_hard_gate_queue_status_ui.yaml

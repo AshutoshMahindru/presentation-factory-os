@@ -48,8 +48,14 @@ readiness contract before the deck/export API surface exists.
   renders the current approval ledger snapshot, quorum state, missing roles,
   decision counts, and escalation state without adding approval submission or
   changing backend behavior.
-- Step 81 can use outbox, source-retraction, and hard-gate helper types for
-  hard-gate and queue status UI.
+- Step 81 adds read-only hard-gate and queue status panels for operator
+  visibility. `QueueStatusPanel` surfaces pending and failed outbox status,
+  pending source retraction cascades, and failed or blocked source lifecycle
+  events when those row details are present in an existing API payload. With the
+  current status endpoints it falls back to deterministic count rows rather than
+  inventing a backend contract. `HardGateStatusPanel` shows pass, fail, and
+  blocked gate state, failed check reasons, check metadata, and the existing
+  stale artifact warning message for `stale_due_to_retreat` blockers.
 - Step 82 should wait for the promoted deck/export readiness API surface before
   adding export readiness UI.
 

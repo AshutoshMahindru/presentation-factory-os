@@ -3,6 +3,8 @@ import type {
   PfosPhase,
   ProjectControlPlaneHealth,
 } from "../lib/api";
+import { HardGateStatusPanel } from "./HardGateStatusPanel";
+import { QueueStatusPanel } from "./QueueStatusPanel";
 
 export interface ProjectHealthProps {
   projectId: string;
@@ -57,7 +59,7 @@ function buildSummaryItems(health: ProjectControlPlaneHealth): HealthSummaryItem
   return [
     {
       label: "Outbox",
-      value: health.outbox.unprocessed_count + health.outbox.failed_count,
+      value: health.outbox.unprocessed_count,
       status: health.outbox.blocked ? "attention" : "clear",
       detail: `${health.outbox.failed_count} failed, ${formatAge(
         health.outbox.oldest_unprocessed_age_seconds,
@@ -152,32 +154,11 @@ export function ProjectHealth({
       </dl>
 
       <div className="pfos-health-detail-grid">
-        <section className="pfos-health-section" aria-labelledby="queue-status-heading">
-          <h3 id="queue-status-heading">Queue status</h3>
-          <dl className="pfos-field-list">
-            <div>
-              <dt>Unprocessed outbox</dt>
-              <dd>{health.outbox.unprocessed_count}</dd>
-            </div>
-            <div>
-              <dt>Failed outbox</dt>
-              <dd>{health.outbox.failed_count}</dd>
-            </div>
-            <div>
-              <dt>Pending retractions</dt>
-              <dd>{health.sourceRetractions.pending_count}</dd>
-            </div>
-            <div>
-              <dt>Processing retractions</dt>
-              <dd>{health.sourceRetractions.processing_count}</dd>
-            </div>
-            <div>
-              <dt>Failed retractions</dt>
-              <dd>{health.sourceRetractions.failed_count}</dd>
-            </div>
-          </dl>
-        </section>
-
+        <QueueStatusPanel
+          outbox={health.outbox}
+          sourceRetractions={health.sourceRetractions}
+          isLoading={isLoading}
+        />
         <section className="pfos-health-section" aria-labelledby="approval-status-heading">
           <h3 id="approval-status-heading">Approval status</h3>
           {approvalStatus ? (
@@ -211,35 +192,7 @@ export function ProjectHealth({
         </section>
       </div>
 
-      <section className="pfos-health-section" aria-labelledby="hard-gate-heading">
-        <h3 id="hard-gate-heading">Hard-gate checks</h3>
-        <table className="pfos-hard-gate-table">
-          <thead>
-            <tr>
-              <th scope="col">Check</th>
-              <th scope="col">Status</th>
-              <th scope="col">Reason</th>
-            </tr>
-          </thead>
-          <tbody>
-            {health.hardGates.checks.map((check) => (
-              <tr key={check.name}>
-                <th scope="row">{check.name}</th>
-                <td>
-                  <span
-                    className={statusClass(
-                      check.passed === false ? "attention" : "clear",
-                    )}
-                  >
-                    {check.passed === false ? "Blocked" : "Clear"}
-                  </span>
-                </td>
-                <td>{check.reason || "None"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+      <HardGateStatusPanel hardGates={health.hardGates} isLoading={isLoading} />
     </section>
   );
 }
