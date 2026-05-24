@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import Any
-import subprocess
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
@@ -10,65 +9,15 @@ from pydantic import BaseModel, Field
 from api.project_repository import ProjectRepository
 from system.audience_profile_validator import AudienceProfileValidator
 from system.approval_quorum import ApprovalEntry, ApprovalQuorum
+from system.outbox_repository import OutboxRepository
 from system.state_machine import GuardFailedError, StateMachine, StateMachineError
 
-
-
-COMPOSE_FILE = "docker-compose.apps.yaml"
-
-
-def postgres_outbox_not_drained(project_id: str) -> tuple[bool, int]:
-    """
-    Returns (blocked, count) for failed or unprocessed outbox rows.
-
-    This is a baby-step implementation using docker compose + psql.
-    Later this becomes a real repository call.
-    """
-    sql = f"""
-    SELECT count(*)
-    FROM outbox
-    WHERE project_id = '{project_id}'
-      AND (processed = FALSE OR error_count > 0);
-    """
-
-    result = subprocess.run(
-        [
-            "docker",
-            "compose",
-            "-f",
-            COMPOSE_FILE,
-            "exec",
-            "-T",
-            "postgres",
-            "psql",
-            "-U",
-            "pfos",
-            "-d",
-            "pfos",
-            "-v",
-            "ON_ERROR_STOP=1",
-            "-A",
-            "-t",
-            "-c",
-            sql,
-        ],
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
-
-    if result.returncode != 0:
-        # Fail closed. If outbox status cannot be checked, block transition.
-        return True, -1
-
-    count = int(result.stdout.strip() or "0")
-    return count > 0, count
 
 
 app = FastAPI(title="PFOS Workflow Service", version="3.2.4")
 
 project_repository = ProjectRepository()
+outbox_repository = OutboxRepository()
 
 
 class CreateProjectRequest(BaseModel):
@@ -240,8 +189,8 @@ def request_phase_transition(project_id: str, payload: PhaseTransitionRequest) -
             },
         )
 
-    outbox_blocked, outbox_count = postgres_outbox_not_drained(project_id)
-    if outbox_blocked:
+    outbox_status = outbox_repository.get_project_outbox_status(project_id)
+    if outbox_status.blocked:
         raise HTTPException(
             status_code=422,
             detail={
@@ -253,7 +202,9 @@ def request_phase_transition(project_id: str, payload: PhaseTransitionRequest) -
                     {
                         "name": "no_failed_or_unprocessed_outbox_items",
                         "reason": "project_has_failed_or_unprocessed_outbox_rows",
-                        "count": outbox_count,
+                        "unprocessed_count": outbox_status.unprocessed_count,
+                        "failed_count": outbox_status.failed_count,
+                        "oldest_unprocessed_age_seconds": outbox_status.oldest_unprocessed_age_seconds,
                     }
                 ],
             },

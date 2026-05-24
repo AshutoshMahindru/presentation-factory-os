@@ -1,0 +1,204 @@
+step_id: 43
+name: workflow_outbox_repository
+branch: baby-step-43-workflow-outbox-repository
+objective: >
+  Replace workflow-service's local postgres_outbox_not_drained function with the
+  centralized OutboxRepository so phase transition blocking and future health/export
+  gates share one deterministic outbox status implementation.
+
+commit_message: Use centralized outbox repository in workflow transitions
+
+commands:
+  - name: patch workflow outbox blocking to use OutboxRepository
+    run: |
+      python - <<'PY'
+      from pathlib import Path
+
+      path = Path("api/workflow.py")
+      text = path.read_text()
+
+      if "from system.outbox_repository import OutboxRepository" not in text:
+          text = text.replace(
+              "from system.approval_quorum import ApprovalEntry, ApprovalQuorum\n",
+              "from system.approval_quorum import ApprovalEntry, ApprovalQuorum\nfrom system.outbox_repository import OutboxRepository\n",
+          )
+
+      # Remove now-unused local subprocess import if present.
+      text = text.replace("import subprocess\n", "")
+
+      start_marker = "\n\nCOMPOSE_FILE = \"docker-compose.apps.yaml\"\n\n\n"
+      end_marker = "\n\napp = FastAPI(title=\"PFOS Workflow Service\", version=\"3.2.4\")\n"
+
+      if start_marker in text:
+          start = text.index(start_marker)
+          end = text.index(end_marker)
+          text = text[:start] + end_marker + text[end + len(end_marker):]
+
+      if "outbox_repository = OutboxRepository()" not in text:
+          text = text.replace(
+              "project_repository = ProjectRepository()\n",
+              "project_repository = ProjectRepository()\noutbox_repository = OutboxRepository()\n",
+          )
+
+      old = '''    outbox_blocked, outbox_count = postgres_outbox_not_drained(project_id)
+          if outbox_blocked:
+              raise HTTPException(
+                  status_code=422,
+                  detail={
+                      "error": "transition_blocked",
+                      "project_id": project_id,
+                      "from_phase": payload.from_phase,
+                      "to_phase": payload.to_phase,
+                      "blocking_guards": [
+                          {
+                              "name": "no_failed_or_unprocessed_outbox_items",
+                              "reason": "project_has_failed_or_unprocessed_outbox_rows",
+                              "count": outbox_count,
+                          }
+                      ],
+                  },
+              )
+      '''
+
+      new = '''    outbox_status = outbox_repository.get_project_outbox_status(project_id)
+          if outbox_status.blocked:
+              raise HTTPException(
+                  status_code=422,
+                  detail={
+                      "error": "transition_blocked",
+                      "project_id": project_id,
+                      "from_phase": payload.from_phase,
+                      "to_phase": payload.to_phase,
+                      "blocking_guards": [
+                          {
+                              "name": "no_failed_or_unprocessed_outbox_items",
+                              "reason": "project_has_failed_or_unprocessed_outbox_rows",
+                              "unprocessed_count": outbox_status.unprocessed_count,
+                              "failed_count": outbox_status.failed_count,
+                              "oldest_unprocessed_age_seconds": outbox_status.oldest_unprocessed_age_seconds,
+                          }
+                      ],
+                  },
+              )
+      '''
+
+      if old not in text:
+          raise SystemExit("Could not find old outbox blocking block in api/workflow.py")
+
+      text = text.replace(old, new)
+
+      path.write_text(text)
+      PY
+
+      cat > tests/integration/test_workflow_outbox_repository_blocking.py <<'PY'
+      from __future__ import annotations
+
+      from dataclasses import dataclass
+
+      from fastapi.testclient import TestClient
+
+      import api.workflow as workflow
+      from api.workflow import app, project_repository
+
+
+      client = TestClient(app)
+
+
+      VALID_AUDIENCE_PROFILE = {
+          "decision_maker_type": "ic_partner",
+          "risk_tolerance": "medium",
+          "familiarity_with_topic": "informed",
+          "known_objections": ["market_size", "team_risk"],
+          "stakeholder_map": [
+              {
+                  "role": "economic_buyer",
+                  "concern": "return on invested capital",
+              }
+          ],
+      }
+
+
+      @dataclass(frozen=True)
+      class FakeOutboxStatus:
+          project_id: str
+          blocked: bool
+          unprocessed_count: int
+          failed_count: int
+          oldest_unprocessed_age_seconds: int | None
+
+
+      class FakeOutboxRepository:
+          def __init__(self, status: FakeOutboxStatus) -> None:
+              self.status = status
+              self.calls: list[str] = []
+
+          def get_project_outbox_status(self, project_id: str) -> FakeOutboxStatus:
+              self.calls.append(project_id)
+              return self.status
+
+
+      def test_workflow_transition_uses_centralized_outbox_repository(monkeypatch) -> None:
+          project = project_repository.create_project(
+              name="Step 43 Outbox Repository Blocking",
+              audience="Investment committee",
+              audience_profile=VALID_AUDIENCE_PROFILE,
+          )
+          project_repository.update_phase(project.project_id, "intake")
+
+          fake_repository = FakeOutboxRepository(
+              FakeOutboxStatus(
+                  project_id=project.project_id,
+                  blocked=True,
+                  unprocessed_count=2,
+                  failed_count=1,
+                  oldest_unprocessed_age_seconds=44,
+              )
+          )
+
+          monkeypatch.setattr(workflow, "outbox_repository", fake_repository)
+
+          response = client.post(
+              f"/projects/{project.project_id}/phase-transitions",
+              json={
+                  "from_phase": "intake",
+                  "to_phase": "strategy",
+                  "transition_kind": "forward",
+                  "requested_by": "analyst@example.com",
+                  "reason": "Should be blocked by outbox repository.",
+                  "guard_context": {
+                      "guards": {
+                          "rubric_above_3_5": True,
+                          "thesis_audience_aligned": True,
+                          "no_blocking_rules": True,
+                      }
+                  },
+              },
+          )
+
+          assert response.status_code == 422
+          body = response.json()["detail"]
+
+          assert fake_repository.calls == [project.project_id]
+          assert body["error"] == "transition_blocked"
+          assert body["blocking_guards"] == [
+              {
+                  "name": "no_failed_or_unprocessed_outbox_items",
+                  "reason": "project_has_failed_or_unprocessed_outbox_rows",
+                  "unprocessed_count": 2,
+                  "failed_count": 1,
+                  "oldest_unprocessed_age_seconds": 44,
+              }
+          ]
+      PY
+
+validation_commands:
+  - python -m compileall api system
+  - pytest tests/unit/test_outbox_repository.py -vv
+  - pytest tests/integration/test_workflow_outbox_repository_blocking.py -vv
+  - pytest tests/integration/test_approval_quorum_transition_postgres.py -vv
+  - make validate
+
+files_expected:
+  - api/workflow.py
+  - tests/integration/test_workflow_outbox_repository_blocking.py
+  - .pfos/baby_steps/043_workflow_outbox_repository.yaml
