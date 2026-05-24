@@ -82,6 +82,74 @@ class ProjectRepository:
         return self._parse_project_record(result.stdout)
 
 
+
+    def record_approval(
+        self,
+        project_id: str,
+        phase: str,
+        actor_email: str,
+        role: str,
+        decision: str,
+        rubric_score_snapshot: dict[str, Any],
+        notes: str | None = None,
+    ) -> None:
+        snapshot_json = self._json(rubric_score_snapshot)
+
+        sql = f"""
+        INSERT INTO approval_ledger (
+          project_id,
+          phase,
+          actor_email,
+          role,
+          decision,
+          rubric_score_snapshot,
+          notes
+        )
+        VALUES (
+          '{self._sql(project_id)}',
+          '{self._sql(phase)}',
+          '{self._sql(actor_email)}',
+          '{self._sql(role)}',
+          '{self._sql(decision)}',
+          '{snapshot_json}'::jsonb,
+          {self._nullable(notes)}
+        );
+        """
+
+        result = self._psql(sql)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr)
+
+    def list_approvals_for_phase(self, project_id: str, phase: str) -> list[dict[str, Any]]:
+        sql = f"""
+        SELECT actor_email, role, decision
+        FROM approval_ledger
+        WHERE project_id = '{self._sql(project_id)}'
+          AND phase = '{self._sql(phase)}'
+        ORDER BY created_at ASC;
+        """
+
+        result = self._psql(sql)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr)
+
+        approvals: list[dict[str, Any]] = []
+        for line in result.stdout.splitlines():
+            if "|" not in line:
+                continue
+
+            actor_email, role, decision = [part.strip() for part in line.split("|")]
+            approvals.append(
+                {
+                    "actor_email": actor_email,
+                    "role": role,
+                    "decision": decision,
+                }
+            )
+
+        return approvals
+
+
     def record_phase_transition(
         self,
         project_id: str,

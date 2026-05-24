@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from api.project_repository import ProjectRepository
 from system.audience_profile_validator import AudienceProfileValidator
+from system.approval_quorum import ApprovalEntry, ApprovalQuorum
 from system.state_machine import GuardFailedError, StateMachine, StateMachineError
 
 
@@ -92,6 +93,15 @@ class PhaseTransitionRequest(BaseModel):
     requested_by: str = Field(min_length=1)
     reason: str | None = None
     guard_context: dict[str, Any] = Field(default_factory=dict)
+
+
+class ApprovalSubmissionRequest(BaseModel):
+    phase: str
+    actor_email: str = Field(min_length=1)
+    role: str = Field(min_length=1)
+    decision: str = Field(min_length=1)
+    rubric_score_snapshot: dict[str, Any] = Field(default_factory=dict)
+    notes: str | None = None
 
 
 @app.get("/health")
@@ -240,4 +250,63 @@ def request_phase_transition(project_id: str, payload: PhaseTransitionRequest) -
         "to_phase": transition.to_phase,
         "status": "applied",
         "guards": serialized_guard_results,
+    }
+
+
+@app.post("/projects/{project_id}/approvals")
+def submit_approval(project_id: str, payload: ApprovalSubmissionRequest) -> dict[str, Any]:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail={"error": "project_not_found"})
+
+    try:
+        project_repository.record_approval(
+            project_id=project_id,
+            phase=payload.phase,
+            actor_email=payload.actor_email,
+            role=payload.role,
+            decision=payload.decision,
+            rubric_score_snapshot=payload.rubric_score_snapshot,
+            notes=payload.notes,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "approval_rejected",
+                "message": str(exc),
+            },
+        ) from exc
+
+    approvals = project_repository.list_approvals_for_phase(project_id, payload.phase)
+    entries = [
+        ApprovalEntry(
+            actor_email=item["actor_email"],
+            role=item["role"],
+            decision=item["decision"],
+        )
+        for item in approvals
+    ]
+
+    try:
+        quorum_result = ApprovalQuorum.from_yaml().evaluate(payload.phase, entries)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "quorum_evaluation_failed",
+                "message": str(exc),
+            },
+        ) from exc
+
+    return {
+        "project_id": project_id,
+        "phase": payload.phase,
+        "approval_recorded": True,
+        "quorum_met": quorum_result.quorum_met,
+        "approved_count": quorum_result.approved_count,
+        "rejected_count": quorum_result.rejected_count,
+        "changes_requested_count": quorum_result.changes_requested_count,
+        "missing_roles": quorum_result.missing_roles,
+        "blocking_rejection": quorum_result.blocking_rejection,
     }
