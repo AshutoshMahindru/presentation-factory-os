@@ -84,8 +84,10 @@ class OutboxWorker:
 
     def apply_operation(self, row: OutboxRow) -> None:
         """
-        v1 accepts known operation types but does not yet write Neo4j.
-        Neo4j side effects will be added in the next baby step.
+        Applies one idempotent cross-store side effect.
+
+        Baby Step 27 implements the first real Neo4j write:
+        phase_transition_side_effect creates/updates a Project node.
         """
         allowed = {
             "source_retracted",
@@ -99,6 +101,26 @@ class OutboxWorker:
 
         if row.payload.get("force_error") is True:
             raise RuntimeError("Forced outbox operation failure for retry/backoff test.")
+
+        if row.operation_type == "phase_transition_side_effect":
+            self.apply_phase_transition_side_effect(row)
+
+    def apply_phase_transition_side_effect(self, row: OutboxRow) -> None:
+        project_name = str(row.payload.get("project_name", "Outbox Project")).replace("'", "''")
+        current_phase = str(row.payload.get("to_phase", "unknown")).replace("'", "''")
+
+        query = f"""
+        MERGE (p:Project {{id: '{row.project_id}'}})
+        SET p.name = '{project_name}',
+            p.status = 'active',
+            p.current_phase = '{current_phase}',
+            p.updated_at = datetime()
+        RETURN p.id AS project_id;
+        """
+
+        result = self._cypher(query)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr)
 
     def mark_processed(self, row_id: str) -> None:
         sql = f"""
@@ -147,6 +169,29 @@ class OutboxWorker:
                 "|",
                 "-c",
                 sql,
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+
+    def _cypher(self, query: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [
+                "docker",
+                "compose",
+                "-f",
+                self.compose_file,
+                "exec",
+                "-T",
+                "neo4j",
+                "cypher-shell",
+                "-u",
+                "neo4j",
+                "-p",
+                "pfos_neo4j_password",
+                query,
             ],
             text=True,
             stdout=subprocess.PIPE,
