@@ -6,7 +6,8 @@ from uuid import uuid4
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from api.project_repository import ProjectRepository
+from api.project_repository import ProjectRepository, project_repository
+from api.sources import router as sources_router
 from system.audience_profile_validator import AudienceProfileValidator
 from system.approval_quorum import ApprovalEntry, ApprovalQuorum
 from system.outbox_repository import OutboxRepository
@@ -17,8 +18,8 @@ from system.state_machine import GuardFailedError, StateMachine, StateMachineErr
 
 
 app = FastAPI(title="PFOS Workflow Service", version="3.2.4")
+app.include_router(sources_router)
 
-project_repository = ProjectRepository()
 outbox_repository = OutboxRepository()
 hard_gate_repository = HardGateRepository()
 source_lifecycle_repository = SourceLifecycleRepository()

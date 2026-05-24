@@ -1,0 +1,21 @@
+step_id: 51
+name: source_lifecycle_event_api
+branch: baby-step-51-source-lifecycle-event-api
+objective: >
+  Add a deterministic source lifecycle event repository and API endpoint for creating
+  source lifecycle events, especially source retraction events that feed the hard-gate
+  retraction cascade status.
+commit_message: Add source lifecycle event API
+validation_commands:
+  - python -m compileall system api
+  - pytest tests/unit/test_source_lifecycle_event_repository.py -vv
+  - pytest tests/integration/test_source_lifecycle_event_api.py -vv
+  - pytest tests/unit/test_source_lifecycle_repository.py -vv
+  - pytest tests/unit/test_hard_gate_source_retraction.py -vv
+  - make validate
+files_expected:
+  - system/source_lifecycle_event_repository.py
+  - api/sources.py
+  - tests/unit/test_source_lifecycle_event_repository.py
+  - tests/integration/test_source_lifecycle_event_api.py
+  - .pfos/baby_steps/051_source_lifecycle_event_api.yaml

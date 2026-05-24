@@ -236,3 +236,6 @@ class ProjectRepository:
         if value is None:
             return "NULL"
         return f"'{self._sql(value)}'"
+
+
+project_repository = ProjectRepository()
