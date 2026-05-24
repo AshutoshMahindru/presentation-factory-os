@@ -1,0 +1,217 @@
+step_id: 44
+name: outbox_status_endpoint
+branch: baby-step-44-outbox-status-endpoint
+objective: >
+  Add a project-scoped outbox status endpoint backed by the centralized
+  OutboxRepository so clients can inspect transition/export blocking caused by
+  failed or unprocessed outbox rows.
+
+commit_message: Add outbox status endpoint
+
+commands:
+  - name: add outbox status endpoint and tests
+    run: |
+      python - <<'PY'
+      from pathlib import Path
+
+      path = Path("api/workflow.py")
+      text = path.read_text()
+
+      if "class OutboxStatusResponse(BaseModel):" not in text:
+          marker = '''class ApprovalStatusResponse(BaseModel):
+          project_id: str
+          phase: str
+          quorum_met: bool
+          decision_rule: str
+          required_count: int
+          approved_count: int
+          rejected_count: int
+          abstained_count: int
+          changes_requested_count: int
+          missing_roles: dict[str, int]
+          blocking_rejection: bool
+          escalation_status: str
+          escalation_reason: str | None = None
+      '''
+
+          replacement = marker + '''
+
+
+      class OutboxStatusResponse(BaseModel):
+          project_id: str
+          blocked: bool
+          unprocessed_count: int
+          failed_count: int
+          oldest_unprocessed_age_seconds: int | None = None
+      '''
+
+          if marker not in text:
+              raise SystemExit("Could not find ApprovalStatusResponse block.")
+
+          text = text.replace(marker, replacement)
+
+      if "@app.get(\"/health/projects/{project_id}/outbox\"" not in text:
+          insert_before = '''@app.get("/projects/{project_id}/approvals/status/{phase}", response_model=ApprovalStatusResponse)
+      def get_approval_status(project_id: str, phase: str) -> ApprovalStatusResponse:
+      '''
+
+          endpoint = '''@app.get("/health/projects/{project_id}/outbox", response_model=OutboxStatusResponse)
+      def get_project_outbox_status(project_id: str) -> OutboxStatusResponse:
+          project = project_repository.get_project(project_id)
+          if project is None:
+              raise HTTPException(status_code=404, detail={"error": "project_not_found"})
+
+          status = outbox_repository.get_project_outbox_status(project_id)
+
+          return OutboxStatusResponse(
+              project_id=project_id,
+              blocked=status.blocked,
+              unprocessed_count=status.unprocessed_count,
+              failed_count=status.failed_count,
+              oldest_unprocessed_age_seconds=status.oldest_unprocessed_age_seconds,
+          )
+
+
+      '''
+
+          if insert_before not in text:
+              raise SystemExit("Could not find approval status endpoint insertion point.")
+
+          text = text.replace(insert_before, endpoint + insert_before)
+
+      path.write_text(text)
+      PY
+
+      cat > tests/integration/test_outbox_status_endpoint.py <<'PY'
+      from __future__ import annotations
+
+      from dataclasses import dataclass
+
+      from fastapi.testclient import TestClient
+
+      import api.workflow as workflow
+      from api.workflow import app, project_repository
+
+
+      client = TestClient(app)
+
+
+      VALID_AUDIENCE_PROFILE = {
+          "decision_maker_type": "ic_partner",
+          "risk_tolerance": "medium",
+          "familiarity_with_topic": "informed",
+          "known_objections": ["market_size", "team_risk"],
+          "stakeholder_map": [
+              {
+                  "role": "economic_buyer",
+                  "concern": "return on invested capital",
+              }
+          ],
+      }
+
+
+      @dataclass(frozen=True)
+      class FakeOutboxStatus:
+          project_id: str
+          blocked: bool
+          unprocessed_count: int
+          failed_count: int
+          oldest_unprocessed_age_seconds: int | None
+
+
+      class FakeOutboxRepository:
+          def __init__(self, status: FakeOutboxStatus) -> None:
+              self.status = status
+              self.calls: list[str] = []
+
+          def get_project_outbox_status(self, project_id: str) -> FakeOutboxStatus:
+              self.calls.append(project_id)
+              return self.status
+
+
+      def test_outbox_status_endpoint_reports_clean_project(monkeypatch) -> None:
+          project = project_repository.create_project(
+              name="Step 44 Clean Outbox Project",
+              audience="Investment committee",
+              audience_profile=VALID_AUDIENCE_PROFILE,
+          )
+
+          fake_repository = FakeOutboxRepository(
+              FakeOutboxStatus(
+                  project_id=project.project_id,
+                  blocked=False,
+                  unprocessed_count=0,
+                  failed_count=0,
+                  oldest_unprocessed_age_seconds=None,
+              )
+          )
+
+          monkeypatch.setattr(workflow, "outbox_repository", fake_repository)
+
+          response = client.get(f"/health/projects/{project.project_id}/outbox")
+
+          assert response.status_code == 200
+          body = response.json()
+
+          assert fake_repository.calls == [project.project_id]
+          assert body == {
+              "project_id": project.project_id,
+              "blocked": False,
+              "unprocessed_count": 0,
+              "failed_count": 0,
+              "oldest_unprocessed_age_seconds": None,
+          }
+
+
+      def test_outbox_status_endpoint_reports_blocked_project(monkeypatch) -> None:
+          project = project_repository.create_project(
+              name="Step 44 Blocked Outbox Project",
+              audience="Investment committee",
+              audience_profile=VALID_AUDIENCE_PROFILE,
+          )
+
+          fake_repository = FakeOutboxRepository(
+              FakeOutboxStatus(
+                  project_id=project.project_id,
+                  blocked=True,
+                  unprocessed_count=3,
+                  failed_count=1,
+                  oldest_unprocessed_age_seconds=64,
+              )
+          )
+
+          monkeypatch.setattr(workflow, "outbox_repository", fake_repository)
+
+          response = client.get(f"/health/projects/{project.project_id}/outbox")
+
+          assert response.status_code == 200
+          body = response.json()
+
+          assert fake_repository.calls == [project.project_id]
+          assert body["project_id"] == project.project_id
+          assert body["blocked"] is True
+          assert body["unprocessed_count"] == 3
+          assert body["failed_count"] == 1
+          assert body["oldest_unprocessed_age_seconds"] == 64
+
+
+      def test_outbox_status_endpoint_404_for_unknown_project() -> None:
+          response = client.get(
+              "/health/projects/00000000-0000-0000-0000-000000000000/outbox"
+          )
+
+          assert response.status_code == 404
+          assert response.json()["detail"]["error"] == "project_not_found"
+      PY
+
+validation_commands:
+  - python -m compileall api system
+  - pytest tests/unit/test_outbox_repository.py -vv
+  - pytest tests/integration/test_workflow_outbox_repository_blocking.py -vv
+  - pytest tests/integration/test_outbox_status_endpoint.py -vv
+  - make validate
+
+files_expected:
+  - api/workflow.py
+  - tests/integration/test_outbox_status_endpoint.py
+  - .pfos/baby_steps/044_outbox_status_endpoint.yaml
