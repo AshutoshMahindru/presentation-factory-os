@@ -43,7 +43,7 @@ GROUP BY processed, error_count, target_store, operation_type
 ORDER BY processed, error_count, target_store, operation_type
 """
 
-OLDEST_SOURCE_LIFECYCLE_BLOCKING_SQL = """
+SOURCE_LIFECYCLE_BLOCKING_READOUT_SQL = """
 SELECT
   id,
   project_id,
@@ -56,10 +56,10 @@ SELECT
 FROM source_lifecycle_events
 WHERE processing_status IN ('pending', 'failed')
 ORDER BY created_at ASC
-LIMIT 1
+LIMIT %s
 """
 
-OLDEST_OUTBOX_BLOCKING_SQL = """
+OUTBOX_BLOCKING_READOUT_SQL = """
 SELECT
   id,
   project_id,
@@ -72,15 +72,15 @@ SELECT
 FROM outbox
 WHERE processed = FALSE
 ORDER BY created_at ASC
-LIMIT 1
+LIMIT %s
 """
 
 SMOKE_SQL_STATEMENTS = (
     TABLE_PRESENCE_SQL,
     SOURCE_LIFECYCLE_GROUP_SQL,
     OUTBOX_GROUP_SQL,
-    OLDEST_SOURCE_LIFECYCLE_BLOCKING_SQL,
-    OLDEST_OUTBOX_BLOCKING_SQL,
+    SOURCE_LIFECYCLE_BLOCKING_READOUT_SQL,
+    OUTBOX_BLOCKING_READOUT_SQL,
 )
 
 QueryRows = list[Mapping[str, Any]]
@@ -93,13 +93,21 @@ class SmokeSnapshot:
     found_tables: tuple[str, ...]
     source_lifecycle_groups: tuple[Mapping[str, Any], ...] = field(default_factory=tuple)
     outbox_groups: tuple[Mapping[str, Any], ...] = field(default_factory=tuple)
-    oldest_source_lifecycle_event: Mapping[str, Any] | None = None
-    oldest_outbox_row: Mapping[str, Any] | None = None
+    source_lifecycle_blocking_rows: tuple[Mapping[str, Any], ...] = field(default_factory=tuple)
+    outbox_blocking_rows: tuple[Mapping[str, Any], ...] = field(default_factory=tuple)
 
     @property
     def missing_tables(self) -> tuple[str, ...]:
         found = set(self.found_tables)
         return tuple(table for table in REQUIRED_TABLES if table not in found)
+
+    @property
+    def oldest_source_lifecycle_event(self) -> Mapping[str, Any] | None:
+        return self.source_lifecycle_blocking_rows[0] if self.source_lifecycle_blocking_rows else None
+
+    @property
+    def oldest_outbox_row(self) -> Mapping[str, Any] | None:
+        return self.outbox_blocking_rows[0] if self.outbox_blocking_rows else None
 
 
 def resolve_database_url(
@@ -131,7 +139,8 @@ def create_psycopg_query_executor(database_url: str) -> QueryExecutor:
     return execute
 
 
-def collect_snapshot(query: QueryExecutor) -> SmokeSnapshot:
+def collect_snapshot(query: QueryExecutor, details_limit: int = 5) -> SmokeSnapshot:
+    validate_details_limit(details_limit)
     table_rows = execute_select(query, TABLE_PRESENCE_SQL, (list(REQUIRED_TABLES),))
     found_tables = tuple(str(row["table_name"]) for row in table_rows)
     snapshot = SmokeSnapshot(found_tables=found_tables)
@@ -140,15 +149,19 @@ def collect_snapshot(query: QueryExecutor) -> SmokeSnapshot:
 
     source_groups = tuple(execute_select(query, SOURCE_LIFECYCLE_GROUP_SQL))
     outbox_groups = tuple(execute_select(query, OUTBOX_GROUP_SQL))
-    source_blocking_rows = execute_select(query, OLDEST_SOURCE_LIFECYCLE_BLOCKING_SQL)
-    outbox_blocking_rows = execute_select(query, OLDEST_OUTBOX_BLOCKING_SQL)
+    source_blocking_rows = tuple(
+        execute_select(query, SOURCE_LIFECYCLE_BLOCKING_READOUT_SQL, (details_limit,))
+    )
+    outbox_blocking_rows = tuple(
+        execute_select(query, OUTBOX_BLOCKING_READOUT_SQL, (details_limit,))
+    )
 
     return SmokeSnapshot(
         found_tables=found_tables,
         source_lifecycle_groups=source_groups,
         outbox_groups=outbox_groups,
-        oldest_source_lifecycle_event=source_blocking_rows[0] if source_blocking_rows else None,
-        oldest_outbox_row=outbox_blocking_rows[0] if outbox_blocking_rows else None,
+        source_lifecycle_blocking_rows=source_blocking_rows,
+        outbox_blocking_rows=outbox_blocking_rows,
     )
 
 
@@ -166,6 +179,11 @@ def ensure_select_only(sql: str) -> None:
     first_token = statement.split(maxsplit=1)[0].upper() if statement else ""
     if first_token != "SELECT":
         raise ValueError("Smoke script only permits SELECT statements")
+
+
+def validate_details_limit(details_limit: int) -> None:
+    if details_limit <= 0 or details_limit > 50:
+        raise ValueError("details_limit must be between 1 and 50")
 
 
 def render_report(snapshot: SmokeSnapshot) -> str:
@@ -220,6 +238,14 @@ def render_report(snapshot: SmokeSnapshot) -> str:
     lines.append("Oldest unprocessed or failed outbox row:")
     lines.append(_format_optional_row(snapshot.oldest_outbox_row))
 
+    lines.append("")
+    lines.append("Pending or failed source_lifecycle_events readout:")
+    lines.extend(_format_row_readout(snapshot.source_lifecycle_blocking_rows))
+
+    lines.append("")
+    lines.append("Unprocessed or failed outbox readout:")
+    lines.extend(_format_row_readout(snapshot.outbox_blocking_rows))
+
     if snapshot.missing_tables:
         lines.append("")
         lines.append("Smoke status: FAIL missing required tables: " + ", ".join(snapshot.missing_tables))
@@ -242,6 +268,12 @@ def main(
         "--database-url",
         help="Postgres database URL. Defaults to DATABASE_URL, then POSTGRES_URL.",
     )
+    parser.add_argument(
+        "--details-limit",
+        type=int,
+        default=5,
+        help="Maximum queue diagnostic rows to print for each queue, 1-50.",
+    )
     args = parser.parse_args(argv)
 
     database_url = resolve_database_url(args.database_url, env)
@@ -250,7 +282,10 @@ def main(
         return 2
 
     try:
-        snapshot = collect_snapshot(query_executor_factory(database_url))
+        snapshot = collect_snapshot(
+            query_executor_factory(database_url),
+            details_limit=args.details_limit,
+        )
     except Exception as exc:
         print(f"ERROR smoke query failed: {exc}")
         return 1
@@ -282,6 +317,12 @@ def _format_optional_row(row: Mapping[str, Any] | None) -> str:
         if key in row
     ]
     return "  " + " ".join(parts)
+
+
+def _format_row_readout(rows: Sequence[Mapping[str, Any]]) -> list[str]:
+    if not rows:
+        return ["  none"]
+    return [_format_optional_row(row) for row in rows]
 
 
 def _format_value(value: Any) -> str:

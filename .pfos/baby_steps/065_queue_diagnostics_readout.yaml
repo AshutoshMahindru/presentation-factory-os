@@ -1,0 +1,17 @@
+step_id: 65
+name: queue_diagnostics_readout
+branch: codex/step-65-queue-diagnostics-readout
+objective: >
+  Extend the read-only source lifecycle and outbox smoke report with bounded
+  queue diagnostics readouts for oldest pending or failed source lifecycle rows
+  and oldest unprocessed or failed outbox rows.
+commit_message: Add queue diagnostics readout
+validation_commands:
+  - python3 -m compileall scripts
+  - python3 -m pytest tests/unit/test_source_lifecycle_outbox_smoke.py -vv
+  - make validate
+files_expected:
+  - scripts/source_lifecycle_outbox_smoke.py
+  - tests/unit/test_source_lifecycle_outbox_smoke.py
+  - docs/29_Source_Lifecycle_Outbox_Smoke_Script.md
+  - .pfos/baby_steps/065_queue_diagnostics_readout.yaml
