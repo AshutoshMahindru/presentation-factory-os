@@ -1,0 +1,14 @@
+step_id: 58
+name: outbox_source_lifecycle_ops_runbook
+branch: codex/step-58-outbox-source-lifecycle-ops-runbook
+objective: >
+  Add operator-facing runbook coverage for validating the local Docker-backed
+  PFOS environment, Postgres schema bootstrap, source lifecycle queue status,
+  outbox queue status, source retraction job invocation, and outbox worker
+  invocation after Baby Step 57.
+commit_message: Add outbox source lifecycle ops runbook
+validation_commands:
+  - make validate
+files_expected:
+  - .pfos/baby_steps/058_outbox_source_lifecycle_ops_runbook.yaml
+  - docs/27_Outbox_Source_Lifecycle_Operational_Status_Runbook.md
