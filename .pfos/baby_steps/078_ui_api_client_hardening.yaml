@@ -1,0 +1,20 @@
+step_id: 78
+name: ui_api_client_hardening
+branch: codex/step-78-ui-api-client-hardening
+objective: >
+  Create a typed UI API client layer for already-implemented PFOS v3.2.4
+  workflow-service control-plane endpoints without changing API, jobs, source
+  lifecycle, outbox worker, Docker, or deck/export behavior.
+constraints:
+  - Keep baby-step YAML metadata-only.
+  - Do not modify API behavior.
+  - Do not modify Docker, jobs, source lifecycle, outbox worker, or deck/export behavior.
+  - Do not add export readiness UI or client helpers before an export readiness endpoint exists.
+commit_message: Harden UI API client layer
+validation_commands:
+  - python3 -m compileall api system
+  - make validate
+files_expected:
+  - ui/lib/api.ts
+  - docs/34_UI_Operator_Experience_Plan.md
+  - .pfos/baby_steps/078_ui_api_client_hardening.yaml
