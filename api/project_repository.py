@@ -122,11 +122,26 @@ class ProjectRepository:
 
     def list_approvals_for_phase(self, project_id: str, phase: str) -> list[dict[str, Any]]:
         sql = f"""
-        SELECT actor_email, role, decision
+        WITH latest_phase_entry AS (
+          SELECT max(created_at) AS entered_at
+          FROM phase_transitions
+          WHERE project_id = '{self._sql(project_id)}'
+            AND to_phase = '{self._sql(phase)}'
+            AND transition_kind IN ('forward', 'initial')
+        )
+        SELECT
+          approval_ledger.actor_email,
+          approval_ledger.role,
+          approval_ledger.decision
         FROM approval_ledger
-        WHERE project_id = '{self._sql(project_id)}'
-          AND phase = '{self._sql(phase)}'
-        ORDER BY created_at ASC;
+        CROSS JOIN latest_phase_entry
+        WHERE approval_ledger.project_id = '{self._sql(project_id)}'
+          AND approval_ledger.phase = '{self._sql(phase)}'
+          AND (
+            latest_phase_entry.entered_at IS NULL
+            OR approval_ledger.created_at > latest_phase_entry.entered_at
+          )
+        ORDER BY approval_ledger.created_at ASC;
         """
 
         result = self._psql(sql)
