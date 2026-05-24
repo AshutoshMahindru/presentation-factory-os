@@ -54,6 +54,18 @@ def test_source_lifecycle_event_repository_rejects_unknown_event_type() -> None:
         )
 
 
+def test_source_lifecycle_event_repository_rejects_unknown_processing_status() -> None:
+    repository = SourceLifecycleEventRepository()
+
+    with pytest.raises(ValueError, match="Unsupported processing_status"):
+        repository.create_event(
+            project_id="project-1",
+            source_id="source-1",
+            event_type="retracted",
+            processing_status="not_real",
+        )
+
+
 def test_source_lifecycle_event_repository_escapes_sql_values() -> None:
     repository = SourceLifecycleEventRepository()
     captured: dict[str, str] = {}
@@ -74,3 +86,71 @@ def test_source_lifecycle_event_repository_escapes_sql_values() -> None:
     assert "project-with-''quote" in captured["sql"]
     assert "source-with-''quote" in captured["sql"]
     assert "O''Reilly" in captured["sql"]
+
+
+def test_source_lifecycle_event_repository_updates_processing_status() -> None:
+    repository = SourceLifecycleEventRepository()
+    captured: dict[str, str] = {}
+
+    def fake_psql(sql: str) -> FakeResult:
+        captured["sql"] = sql
+        return FakeResult("event-1|project-1|source-1|retracted|processed\n")
+
+    repository._psql = fake_psql  # type: ignore[method-assign]
+
+    event = repository.update_processing_status(
+        event_id="event-1",
+        processing_status="processed",
+    )
+
+    assert event.event_id == "event-1"
+    assert event.processing_status == "processed"
+    assert "UPDATE source_lifecycle_events" in captured["sql"]
+    assert "processing_status = 'processed'" in captured["sql"]
+    assert "processed_at = now()" in captured["sql"]
+
+
+def test_source_lifecycle_event_repository_failed_status_increments_error_count() -> None:
+    repository = SourceLifecycleEventRepository()
+    captured: dict[str, str] = {}
+
+    def fake_psql(sql: str) -> FakeResult:
+        captured["sql"] = sql
+        return FakeResult("event-1|project-1|source-1|retracted|failed\n")
+
+    repository._psql = fake_psql  # type: ignore[method-assign]
+
+    event = repository.update_processing_status(
+        event_id="event-1",
+        processing_status="failed",
+        last_error="neo4j unavailable",
+    )
+
+    assert event.processing_status == "failed"
+    assert "error_count = error_count + 1" in captured["sql"]
+    assert "last_error = 'neo4j unavailable'" in captured["sql"]
+
+
+def test_source_lifecycle_event_repository_update_404_when_no_row_returned() -> None:
+    repository = SourceLifecycleEventRepository()
+
+    def fake_psql(sql: str) -> FakeResult:
+        return FakeResult("")
+
+    repository._psql = fake_psql  # type: ignore[method-assign]
+
+    with pytest.raises(LookupError, match="Source lifecycle event not found"):
+        repository.update_processing_status(
+            event_id="missing-event",
+            processing_status="processed",
+        )
+
+
+def test_source_lifecycle_event_repository_rejects_invalid_status_update() -> None:
+    repository = SourceLifecycleEventRepository()
+
+    with pytest.raises(ValueError, match="Unsupported processing_status"):
+        repository.update_processing_status(
+            event_id="event-1",
+            processing_status="not_real",
+        )

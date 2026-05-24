@@ -24,6 +24,11 @@ class SourceLifecycleEventRequest(BaseModel):
     hmac_validated: bool = False
 
 
+class SourceLifecycleEventStatusUpdateRequest(BaseModel):
+    processing_status: str = Field(min_length=1)
+    last_error: str | None = None
+
+
 class SourceLifecycleEventResponse(BaseModel):
     event_id: str
     project_id: str
@@ -62,6 +67,51 @@ def create_source_lifecycle_event(payload: SourceLifecycleEventRequest) -> Sourc
             status_code=500,
             detail={
                 "error": "source_lifecycle_event_write_failed",
+                "message": str(exc),
+            },
+        ) from exc
+
+    return SourceLifecycleEventResponse(
+        event_id=event.event_id,
+        project_id=event.project_id,
+        source_id=event.source_id,
+        event_type=event.event_type,
+        processing_status=event.processing_status,
+    )
+
+
+@router.patch("/sources/events/{event_id}/status", response_model=SourceLifecycleEventResponse)
+def update_source_lifecycle_event_status(
+    event_id: str,
+    payload: SourceLifecycleEventStatusUpdateRequest,
+) -> SourceLifecycleEventResponse:
+    try:
+        event = source_lifecycle_event_repository.update_processing_status(
+            event_id=event_id,
+            processing_status=payload.processing_status,
+            last_error=payload.last_error,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "invalid_source_lifecycle_event_status",
+                "message": str(exc),
+            },
+        ) from exc
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "source_lifecycle_event_not_found",
+                "message": str(exc),
+            },
+        ) from exc
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "source_lifecycle_event_status_update_failed",
                 "message": str(exc),
             },
         ) from exc

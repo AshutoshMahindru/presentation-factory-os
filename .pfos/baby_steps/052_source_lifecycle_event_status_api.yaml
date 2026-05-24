@@ -1,0 +1,21 @@
+step_id: 52
+name: source_lifecycle_event_status_api
+branch: baby-step-52-source-lifecycle-event-status-api
+objective: >
+  Add deterministic source lifecycle event status update repository methods and API
+  so pending source lifecycle events can be marked processing, processed, failed, or blocked.
+commit_message: Add source lifecycle event status API
+validation_commands:
+  - python -m compileall system api
+  - pytest tests/unit/test_source_lifecycle_event_repository.py -vv
+  - pytest tests/integration/test_source_lifecycle_event_api.py -vv
+  - pytest tests/integration/test_source_lifecycle_event_status_api.py -vv
+  - pytest tests/unit/test_source_lifecycle_repository.py -vv
+  - pytest tests/unit/test_hard_gate_source_retraction.py -vv
+  - make validate
+files_expected:
+  - system/source_lifecycle_event_repository.py
+  - api/sources.py
+  - tests/unit/test_source_lifecycle_event_repository.py
+  - tests/integration/test_source_lifecycle_event_status_api.py
+  - .pfos/baby_steps/052_source_lifecycle_event_status_api.yaml

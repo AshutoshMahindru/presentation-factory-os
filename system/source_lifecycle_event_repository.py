@@ -20,7 +20,7 @@ class SourceLifecycleEvent:
 
 class SourceLifecycleEventRepository:
     """
-    Deterministic Postgres-backed source lifecycle event writer.
+    Deterministic Postgres-backed source lifecycle event repository.
 
     This repository writes authoritative lifecycle events into source_lifecycle_events.
     Retraction events are intentionally created as pending, so the hard-gate bundle
@@ -33,6 +33,14 @@ class SourceLifecycleEventRepository:
         "retracted",
         "classification_changed",
         "superseded",
+    }
+
+    ALLOWED_PROCESSING_STATUSES = {
+        "pending",
+        "processing",
+        "processed",
+        "failed",
+        "blocked",
     }
 
     def create_event(
@@ -48,6 +56,9 @@ class SourceLifecycleEventRepository:
     ) -> SourceLifecycleEvent:
         if event_type not in self.ALLOWED_EVENT_TYPES:
             raise ValueError(f"Unsupported lifecycle event_type: {event_type}")
+
+        if processing_status not in self.ALLOWED_PROCESSING_STATUSES:
+            raise ValueError(f"Unsupported processing_status: {processing_status}")
 
         payload_json = self._json(event_payload or {})
 
@@ -79,10 +90,45 @@ class SourceLifecycleEventRepository:
         if result.returncode != 0:
             raise RuntimeError(result.stderr)
 
-        line = result.stdout.strip()
+        return self._parse_event_result(result.stdout)
+
+    def update_processing_status(
+        self,
+        event_id: str,
+        processing_status: str,
+        last_error: str | None = None,
+    ) -> SourceLifecycleEvent:
+        if processing_status not in self.ALLOWED_PROCESSING_STATUSES:
+            raise ValueError(f"Unsupported processing_status: {processing_status}")
+
+        processed_at_sql = "now()" if processing_status == "processed" else "processed_at"
+        error_count_sql = "error_count + 1" if processing_status == "failed" else "error_count"
+
+        sql = f"""
+        UPDATE source_lifecycle_events
+        SET
+          processing_status = '{self._sql(processing_status)}',
+          last_error = {self._nullable(last_error)},
+          error_count = {error_count_sql},
+          processed_at = {processed_at_sql}
+        WHERE id = '{self._sql(event_id)}'
+        RETURNING id, project_id, source_id, event_type, processing_status;
+        """
+
+        result = self._psql(sql)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr)
+
+        if not result.stdout.strip():
+            raise LookupError(f"Source lifecycle event not found: {event_id}")
+
+        return self._parse_event_result(result.stdout)
+
+    def _parse_event_result(self, stdout: str) -> SourceLifecycleEvent:
+        line = stdout.strip()
         parts = [part.strip() for part in line.split("|")]
         if len(parts) != 5:
-            raise RuntimeError(f"Unexpected source lifecycle event insert result: {result.stdout!r}")
+            raise RuntimeError(f"Unexpected source lifecycle event result: {stdout!r}")
 
         return SourceLifecycleEvent(
             event_id=parts[0],
