@@ -34,8 +34,8 @@ is not called by the Step 78 client. Dashboard work should continue using
 an implemented score, evidence coverage, open retraction, days-in-phase,
 approval velocity, and blocking-gate contract.
 
-No export-readiness helper is added in this step. `api/exports.py` is still an
-empty placeholder, and the UI client should not introduce a synthetic export
+No export-readiness API helper is added in this step. `api/exports.py` is still
+an empty placeholder, and the UI client should not introduce a synthetic export
 readiness contract before the deck/export API surface exists.
 
 ## Follow-On UI Steps
@@ -56,8 +56,11 @@ readiness contract before the deck/export API surface exists.
   inventing a backend contract. `HardGateStatusPanel` shows pass, fail, and
   blocked gate state, failed check reasons, check metadata, and the existing
   stale artifact warning message for `stale_due_to_retreat` blockers.
-- Step 82 should wait for the promoted deck/export readiness API surface before
-  adding export readiness UI.
+- Step 82 adds a read-only export readiness panel that composes the existing
+  project control-plane health data with optional deck/export metadata already
+  available to a UI screen. It does not add a new export endpoint or client
+  helper, and it labels unexposed source appendix, evidence-map, or financial
+  reference data as unknown instead of treating the project as export-ready.
 
 ## Step 80 Approval UI
 
@@ -80,3 +83,42 @@ The current API returns a phase-scoped approval status snapshot rather than
 actor-level approval rows. Step 80 therefore presents the ledger as decision
 summary rows and leaves approval submission, actor-level browsing, and export
 readiness UI for later steps with promoted API contracts.
+
+## Export Readiness UI
+
+`ui/components/ExportReadinessPanel.tsx` is a presentational component for
+operator-facing export checks. The component accepts:
+
+| Prop | Source |
+| --- | --- |
+| `health` | Existing `getProjectControlPlaneHealth` fan-out over outbox, source-retraction, and hard-gate endpoints |
+| `deck` | Optional deck snapshot already held by the surrounding UI |
+| `exportMetadata` | Optional source appendix, evidence-map, and financial reference metadata already held by the surrounding UI |
+
+The panel surfaces blocking export conditions without mutating backend state or
+weakening the deterministic export gate:
+
+- Failed or unprocessed outbox rows block export readiness.
+- Open source retraction cascade work blocks export readiness.
+- Failed hard-gate checks are listed as blockers, including stale downstream
+  artifacts when the current hard-gate payload exposes them.
+- Degraded visuals on high or medium materiality slides block readiness when
+  slide data is exposed.
+- Low materiality degraded visuals are shown as warnings.
+- High or medium materiality slides without evidence references block readiness
+  when slide data is exposed.
+- Source appendix and evidence-map metadata are checked when exposed; otherwise
+  the section is marked unknown.
+- Financial validation, unsupported financial claims, missing financial cells,
+  and unvalidated financial references block readiness when exposed.
+
+The overall headline is intentionally conservative:
+
+- `Export blocked` appears when any exposed blocker is present.
+- `Export ready` appears only when all exposed sections are ready and no section
+  is unknown.
+- `No exposed export blockers` appears when there are no blockers but one or
+  more readiness inputs are unavailable.
+
+This keeps the display read-only and avoids creating a fake export success path
+while still giving operators a concise blocker list.
