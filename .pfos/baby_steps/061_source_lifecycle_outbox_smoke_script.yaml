@@ -1,0 +1,17 @@
+step_id: 61
+name: source_lifecycle_outbox_smoke_script
+branch: codex/step-61-source-lifecycle-outbox-smoke-script
+objective: >
+  Add a read-only operational smoke script for source lifecycle and outbox queue
+  status, with unit coverage and operator documentation, without mutating
+  source lifecycle rows, outbox rows, workers, or database schema.
+commit_message: Add source lifecycle outbox smoke script
+validation_commands:
+  - python -m compileall scripts
+  - pytest tests/unit/test_source_lifecycle_outbox_smoke.py -vv
+  - make validate
+files_expected:
+  - scripts/source_lifecycle_outbox_smoke.py
+  - tests/unit/test_source_lifecycle_outbox_smoke.py
+  - docs/29_Source_Lifecycle_Outbox_Smoke_Script.md
+  - .pfos/baby_steps/061_source_lifecycle_outbox_smoke_script.yaml
