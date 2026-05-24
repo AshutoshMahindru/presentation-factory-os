@@ -117,6 +117,24 @@ class ApprovalStatusResponse(BaseModel):
     changes_requested_count: int
     missing_roles: dict[str, int]
     blocking_rejection: bool
+    escalation_status: str
+    escalation_reason: str | None = None
+
+
+def approval_escalation_status(approvals: list[dict[str, Any]], blocking_rejection: bool) -> tuple[str, str | None]:
+    if any(
+        approval["role"] == "senior_partner" and approval["decision"] == "rejected"
+        for approval in approvals
+    ):
+        return "attention_required", "rejection_by_senior_partner"
+
+    if any(approval["decision"] == "changes_requested" for approval in approvals):
+        return "attention_required", "changes_requested"
+
+    if blocking_rejection:
+        return "attention_required", "review_rejection"
+
+    return "none", None
 
 
 @app.get("/health")
@@ -184,6 +202,11 @@ def get_approval_status(project_id: str, phase: str) -> ApprovalStatusResponse:
             },
         ) from exc
 
+    escalation_status, escalation_reason = approval_escalation_status(
+        approvals=approvals,
+        blocking_rejection=quorum_result.blocking_rejection,
+    )
+
     return ApprovalStatusResponse(
         project_id=project_id,
         phase=phase,
@@ -196,6 +219,8 @@ def get_approval_status(project_id: str, phase: str) -> ApprovalStatusResponse:
         changes_requested_count=quorum_result.changes_requested_count,
         missing_roles=quorum_result.missing_roles,
         blocking_rejection=quorum_result.blocking_rejection,
+        escalation_status=escalation_status,
+        escalation_reason=escalation_reason,
     )
 
 

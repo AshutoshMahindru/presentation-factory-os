@@ -1,0 +1,273 @@
+step_id: 41
+name: approval_escalation_status
+branch: baby-step-41-approval-escalation-status
+objective: >
+  Add deterministic approval rejection and escalation status semantics to the
+  approval status endpoint, including senior-partner rejection escalation.
+
+commit_message: Add approval escalation status semantics
+
+commands:
+  - name: patch approval status endpoint with escalation semantics
+    run: |
+      python - <<'PY'
+      from pathlib import Path
+
+      path = Path("api/workflow.py")
+      text = path.read_text()
+
+      old_response = '''class ApprovalStatusResponse(BaseModel):
+          project_id: str
+          phase: str
+          quorum_met: bool
+          decision_rule: str
+          required_count: int
+          approved_count: int
+          rejected_count: int
+          abstained_count: int
+          changes_requested_count: int
+          missing_roles: dict[str, int]
+          blocking_rejection: bool
+      '''
+
+      new_response = '''class ApprovalStatusResponse(BaseModel):
+          project_id: str
+          phase: str
+          quorum_met: bool
+          decision_rule: str
+          required_count: int
+          approved_count: int
+          rejected_count: int
+          abstained_count: int
+          changes_requested_count: int
+          missing_roles: dict[str, int]
+          blocking_rejection: bool
+          escalation_status: str
+          escalation_reason: str | None = None
+      '''
+
+      if old_response not in text and new_response not in text:
+          raise SystemExit("Could not find ApprovalStatusResponse block.")
+
+      if old_response in text:
+          text = text.replace(old_response, new_response)
+
+      helper_marker = '''@app.get("/health")
+      def health() -> dict[str, str]:
+          return {"service": "workflow-service", "status": "ok"}
+      '''
+
+      helper_code = '''def approval_escalation_status(approvals: list[dict[str, Any]], blocking_rejection: bool) -> tuple[str, str | None]:
+          if any(
+              approval["role"] == "senior_partner" and approval["decision"] == "rejected"
+              for approval in approvals
+          ):
+              return "attention_required", "rejection_by_senior_partner"
+
+          if any(approval["decision"] == "changes_requested" for approval in approvals):
+              return "attention_required", "changes_requested"
+
+          if blocking_rejection:
+              return "attention_required", "review_rejection"
+
+          return "none", None
+
+
+      @app.get("/health")
+      def health() -> dict[str, str]:
+          return {"service": "workflow-service", "status": "ok"}
+      '''
+
+      if "def approval_escalation_status(" not in text:
+          if helper_marker not in text:
+              raise SystemExit("Could not find health endpoint marker.")
+          text = text.replace(helper_marker, helper_code)
+
+      old_return = '''    return ApprovalStatusResponse(
+              project_id=project_id,
+              phase=phase,
+              quorum_met=quorum_result.quorum_met,
+              decision_rule=quorum_result.decision_rule,
+              required_count=quorum_result.required_count,
+              approved_count=quorum_result.approved_count,
+              rejected_count=quorum_result.rejected_count,
+              abstained_count=quorum_result.abstained_count,
+              changes_requested_count=quorum_result.changes_requested_count,
+              missing_roles=quorum_result.missing_roles,
+              blocking_rejection=quorum_result.blocking_rejection,
+          )
+      '''
+
+      new_return = '''    escalation_status, escalation_reason = approval_escalation_status(
+              approvals=approvals,
+              blocking_rejection=quorum_result.blocking_rejection,
+          )
+
+          return ApprovalStatusResponse(
+              project_id=project_id,
+              phase=phase,
+              quorum_met=quorum_result.quorum_met,
+              decision_rule=quorum_result.decision_rule,
+              required_count=quorum_result.required_count,
+              approved_count=quorum_result.approved_count,
+              rejected_count=quorum_result.rejected_count,
+              abstained_count=quorum_result.abstained_count,
+              changes_requested_count=quorum_result.changes_requested_count,
+              missing_roles=quorum_result.missing_roles,
+              blocking_rejection=quorum_result.blocking_rejection,
+              escalation_status=escalation_status,
+              escalation_reason=escalation_reason,
+          )
+      '''
+
+      if old_return not in text and "escalation_status=escalation_status" not in text:
+          raise SystemExit("Could not find ApprovalStatusResponse return block.")
+
+      if old_return in text:
+          text = text.replace(old_return, new_return)
+
+      path.write_text(text)
+      PY
+
+      cat > tests/integration/test_approval_escalation_status.py <<'PY'
+      from __future__ import annotations
+
+      from fastapi.testclient import TestClient
+
+      from api.workflow import app, project_repository
+
+
+      client = TestClient(app)
+
+
+      VALID_AUDIENCE_PROFILE = {
+          "decision_maker_type": "ic_partner",
+          "risk_tolerance": "medium",
+          "familiarity_with_topic": "informed",
+          "known_objections": ["market_size", "team_risk"],
+          "stakeholder_map": [
+              {
+                  "role": "economic_buyer",
+                  "concern": "return on invested capital",
+              }
+          ],
+      }
+
+
+      def test_approval_status_reports_no_escalation_without_blocking_rejection() -> None:
+          project = project_repository.create_project(
+              name="Step 41 No Escalation",
+              audience="Investment committee",
+              audience_profile=VALID_AUDIENCE_PROFILE,
+          )
+
+          response = client.get(f"/projects/{project.project_id}/approvals/status/review")
+
+          assert response.status_code == 200
+          body = response.json()
+
+          assert body["quorum_met"] is False
+          assert body["blocking_rejection"] is False
+          assert body["escalation_status"] == "none"
+          assert body["escalation_reason"] is None
+
+
+      def test_approval_status_reports_senior_partner_rejection_escalation() -> None:
+          project = project_repository.create_project(
+              name="Step 41 Senior Partner Escalation",
+              audience="Investment committee",
+              audience_profile=VALID_AUDIENCE_PROFILE,
+          )
+
+          project_repository.record_approval(
+              project_id=project.project_id,
+              phase="review",
+              actor_email="senior@example.com",
+              role="senior_partner",
+              decision="rejected",
+              rubric_score_snapshot={"overall": 2.0},
+              notes="Senior partner rejection.",
+          )
+
+          response = client.get(f"/projects/{project.project_id}/approvals/status/review")
+
+          assert response.status_code == 200
+          body = response.json()
+
+          assert body["quorum_met"] is False
+          assert body["blocking_rejection"] is True
+          assert body["rejected_count"] == 1
+          assert body["escalation_status"] == "attention_required"
+          assert body["escalation_reason"] == "rejection_by_senior_partner"
+
+
+      def test_approval_status_reports_changes_requested_escalation() -> None:
+          project = project_repository.create_project(
+              name="Step 41 Changes Requested Escalation",
+              audience="Investment committee",
+              audience_profile=VALID_AUDIENCE_PROFILE,
+          )
+
+          project_repository.record_approval(
+              project_id=project.project_id,
+              phase="review",
+              actor_email="partner@example.com",
+              role="partner",
+              decision="changes_requested",
+              rubric_score_snapshot={"overall": 3.1},
+              notes="Needs revision.",
+          )
+
+          response = client.get(f"/projects/{project.project_id}/approvals/status/review")
+
+          assert response.status_code == 200
+          body = response.json()
+
+          assert body["quorum_met"] is False
+          assert body["blocking_rejection"] is True
+          assert body["changes_requested_count"] == 1
+          assert body["escalation_status"] == "attention_required"
+          assert body["escalation_reason"] == "changes_requested"
+
+
+      def test_approval_status_reports_general_review_rejection_escalation() -> None:
+          project = project_repository.create_project(
+              name="Step 41 General Review Rejection",
+              audience="Investment committee",
+              audience_profile=VALID_AUDIENCE_PROFILE,
+          )
+
+          project_repository.record_approval(
+              project_id=project.project_id,
+              phase="review",
+              actor_email="ic@example.com",
+              role="ic_member",
+              decision="rejected",
+              rubric_score_snapshot={"overall": 2.2},
+              notes="IC rejection.",
+          )
+
+          response = client.get(f"/projects/{project.project_id}/approvals/status/review")
+
+          assert response.status_code == 200
+          body = response.json()
+
+          assert body["quorum_met"] is False
+          assert body["blocking_rejection"] is True
+          assert body["rejected_count"] == 1
+          assert body["escalation_status"] == "attention_required"
+          assert body["escalation_reason"] == "review_rejection"
+      PY
+
+validation_commands:
+  - python -m compileall api system
+  - pytest tests/integration/test_approval_escalation_status.py -vv
+  - pytest tests/integration/test_approval_status_endpoint.py -vv
+  - pytest tests/integration/test_approval_quorum_transition_postgres.py -vv
+  - pytest tests/integration/test_approval_quorum_snapshot_window.py -vv
+  - make validate
+
+files_expected:
+  - api/workflow.py
+  - tests/integration/test_approval_escalation_status.py
+  - .pfos/baby_steps/041_approval_escalation_status.yaml
