@@ -1,0 +1,22 @@
+step_id: 74
+name: minimal_deterministic_deck_artifact
+branch: codex/step-74-minimal-deterministic-deck-artifact
+objective: >
+  Add minimal deterministic deck outline artifact generation from a valid slide
+  job, with invalid slide jobs returning blocked reasons.
+constraints:
+  - Keep output deterministic.
+  - Do not implement broad PPTX export behavior.
+  - Keep baby-step YAML metadata-only.
+  - Do not modify Docker, Makefile, jobs, API, or outbox worker.
+commit_message: Add deterministic deck outline artifact
+validation_commands:
+  - python3 -m compileall deck_builder financial_model
+  - python3 -m pytest tests/unit/test_render_python_pptx.py -vv
+  - python3 -m pytest tests/unit/test_export_gate.py -vv
+  - python3 -m pytest tests/unit/test_slide_schema.py -vv
+  - make validate
+files_expected:
+  - deck_builder/render_python_pptx.py
+  - tests/unit/test_render_python_pptx.py
+  - .pfos/baby_steps/074_minimal_deterministic_deck_artifact.yaml
