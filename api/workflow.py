@@ -10,6 +10,7 @@ from api.project_repository import ProjectRepository
 from system.audience_profile_validator import AudienceProfileValidator
 from system.approval_quorum import ApprovalEntry, ApprovalQuorum
 from system.outbox_repository import OutboxRepository
+from system.hard_gate_repository import HardGateRepository
 from system.source_lifecycle_repository import SourceLifecycleRepository
 from system.state_machine import GuardFailedError, StateMachine, StateMachineError
 
@@ -19,6 +20,7 @@ app = FastAPI(title="PFOS Workflow Service", version="3.2.4")
 
 project_repository = ProjectRepository()
 outbox_repository = OutboxRepository()
+hard_gate_repository = HardGateRepository()
 source_lifecycle_repository = SourceLifecycleRepository()
 
 
@@ -98,6 +100,15 @@ class SourceRetractionStatusResponse(BaseModel):
     oldest_open_age_seconds: int | None = None
 
 
+
+class HardGateStatusResponse(BaseModel):
+    project_id: str
+    name: str
+    passed: bool
+    checks: list[dict[str, Any]]
+    failed_checks: list[dict[str, Any]]
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"service": "workflow-service", "status": "ok"}
@@ -149,6 +160,24 @@ def get_project_source_retraction_status(project_id: str) -> SourceRetractionSta
         processing_count=status.processing_count,
         failed_count=status.failed_count,
         oldest_open_age_seconds=status.oldest_open_age_seconds,
+    )
+
+
+@app.get("/health/projects/{project_id}/hard-gates", response_model=HardGateStatusResponse)
+def get_project_hard_gate_status(project_id: str) -> HardGateStatusResponse:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail={"error": "project_not_found"})
+
+    result = hard_gate_repository.evaluate_no_blocking_rules(project_id)
+    payload = result.as_payload()
+
+    return HardGateStatusResponse(
+        project_id=project_id,
+        name=str(payload["name"]),
+        passed=bool(payload["passed"]),
+        checks=list(payload["checks"]),
+        failed_checks=list(payload["failed_checks"]),
     )
 
 

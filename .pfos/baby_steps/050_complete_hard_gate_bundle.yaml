@@ -1,0 +1,25 @@
+step_id: 50
+name: complete_hard_gate_bundle
+branch: baby-step-50-complete-hard-gate-bundle
+objective: >
+  Complete the no_blocking_rules hard-gate bundle by adding blocking_rules table
+  status, exposing a project hard-gate status endpoint, and normalizing transition
+  hard-gate failure payloads.
+commit_message: Complete hard gate bundle
+validation_commands:
+  - python -m compileall system api
+  - pytest tests/unit/test_blocking_rules_repository.py -vv
+  - pytest tests/unit/test_hard_gate_blocking_rules.py -vv
+  - pytest tests/unit/test_hard_gate_repository.py -vv
+  - pytest tests/integration/test_hard_gate_status_endpoint.py -vv
+  - pytest tests/integration/test_transition_hard_gate_payload.py -vv
+  - make validate
+files_expected:
+  - system/blocking_rules_repository.py
+  - system/hard_gate_repository.py
+  - api/workflow.py
+  - tests/unit/test_blocking_rules_repository.py
+  - tests/unit/test_hard_gate_blocking_rules.py
+  - tests/integration/test_hard_gate_status_endpoint.py
+  - tests/integration/test_transition_hard_gate_payload.py
+  - .pfos/baby_steps/050_complete_hard_gate_bundle.yaml

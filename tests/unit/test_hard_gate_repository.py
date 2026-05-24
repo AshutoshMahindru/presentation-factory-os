@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from system.blocking_rules_repository import BlockingRulesStatus
 from system.hard_gate_repository import HardGateRepository
 from system.outbox_repository import OutboxStatus
 from system.source_lifecycle_repository import RetractionCascadeStatus
@@ -39,6 +40,18 @@ class FakeOutboxRepository:
         return self.status
 
 
+
+class FakeBlockingRulesRepository:
+    def get_project_blocking_rules_status(self, project_id: str) -> BlockingRulesStatus:
+        return BlockingRulesStatus(
+            project_id=project_id,
+            blocked=False,
+            blocking_count=0,
+            warning_count=0,
+            info_count=0,
+        )
+
+
 def test_hard_gate_repository_passes_when_outbox_clean() -> None:
     outbox_repository = FakeOutboxRepository(
         OutboxStatus(
@@ -53,6 +66,7 @@ def test_hard_gate_repository_passes_when_outbox_clean() -> None:
         outbox_repository=outbox_repository,
         source_lifecycle_repository=FakeSourceLifecycleRepository(),
         stale_artifact_repository=FakeStaleArtifactRepository(),
+        blocking_rules_repository=FakeBlockingRulesRepository(),
     )
 
     result = repository.evaluate_no_blocking_rules("project-1")
@@ -83,6 +97,7 @@ def test_hard_gate_repository_blocks_when_outbox_blocked() -> None:
         outbox_repository=outbox_repository,
         source_lifecycle_repository=FakeSourceLifecycleRepository(),
         stale_artifact_repository=FakeStaleArtifactRepository(),
+        blocking_rules_repository=FakeBlockingRulesRepository(),
     )
 
     result = repository.evaluate_no_blocking_rules("project-2")

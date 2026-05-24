@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from system.blocking_rules_repository import BlockingRulesRepository
 from system.outbox_repository import OutboxRepository
 from system.source_lifecycle_repository import SourceLifecycleRepository
 from system.stale_artifact_repository import StaleArtifactRepository
@@ -35,17 +36,39 @@ class HardGateBundleResult:
         ]
         return "; ".join(failed)
 
+    def as_payload(self) -> dict[str, object]:
+        return {
+            "name": self.name,
+            "passed": self.passed,
+            "checks": [
+                {
+                    "name": check.name,
+                    "passed": check.passed,
+                    "reason": check.reason,
+                    "metadata": check.metadata or {},
+                }
+                for check in self.checks
+            ],
+            "failed_checks": [
+                {
+                    "name": check.name,
+                    "reason": check.reason,
+                    "metadata": check.metadata or {},
+                }
+                for check in self.failed_checks
+            ],
+        }
+
 
 class HardGateRepository:
     """
     Deterministic hard-gate bundle evaluator.
 
-    The no_blocking_rules bundle currently evaluates:
+    The no_blocking_rules bundle evaluates:
     - no_failed_or_unprocessed_outbox_items through OutboxRepository
     - no_stale_downstream_artifacts through StaleArtifactRepository
     - no_pending_retraction_cascade through SourceLifecycleRepository
-
-    Remaining checks are explicit pass stubs until their repositories are implemented.
+    - no_blocking_rules_table_flags through BlockingRulesRepository
     """
 
     def __init__(
@@ -53,17 +76,19 @@ class HardGateRepository:
         outbox_repository: OutboxRepository | None = None,
         source_lifecycle_repository: SourceLifecycleRepository | None = None,
         stale_artifact_repository: StaleArtifactRepository | None = None,
+        blocking_rules_repository: BlockingRulesRepository | None = None,
     ) -> None:
         self.outbox_repository = outbox_repository or OutboxRepository()
         self.source_lifecycle_repository = source_lifecycle_repository or SourceLifecycleRepository()
         self.stale_artifact_repository = stale_artifact_repository or StaleArtifactRepository()
+        self.blocking_rules_repository = blocking_rules_repository or BlockingRulesRepository()
 
     def evaluate_no_blocking_rules(self, project_id: str) -> HardGateBundleResult:
         checks = (
             self._no_failed_or_unprocessed_outbox_items(project_id),
             self._no_stale_downstream_artifacts(project_id),
             self._no_pending_retraction_cascade(project_id),
-            self._stub_pass("no_blocking_rules_table_flags"),
+            self._no_blocking_rules_table_flags(project_id),
         )
 
         return HardGateBundleResult(
@@ -149,10 +174,27 @@ class HardGateRepository:
             },
         )
 
-    def _stub_pass(self, name: str) -> HardGateCheckResult:
+    def _no_blocking_rules_table_flags(self, project_id: str) -> HardGateCheckResult:
+        status = self.blocking_rules_repository.get_project_blocking_rules_status(project_id)
+
+        if not status.blocked:
+            return HardGateCheckResult(
+                name="no_blocking_rules_table_flags",
+                passed=True,
+                metadata={
+                    "blocking_count": status.blocking_count,
+                    "warning_count": status.warning_count,
+                    "info_count": status.info_count,
+                },
+            )
+
         return HardGateCheckResult(
-            name=name,
-            passed=True,
-            reason=None,
-            metadata={"implementation_status": "stub_pass_pending_repository"},
+            name="no_blocking_rules_table_flags",
+            passed=False,
+            reason="project_has_open_blocking_rule_flags",
+            metadata={
+                "blocking_count": status.blocking_count,
+                "warning_count": status.warning_count,
+                "info_count": status.info_count,
+            },
         )
