@@ -1,0 +1,19 @@
+step_id: 72
+name: deck_export_path_audit
+branch: codex/step-72-deck-export-path-audit
+objective: >
+  Audit the current deck/export path and identify exact remaining
+  implementation gaps before changing export behavior.
+constraints:
+  - Documentation and audit only.
+  - Do not change export behavior.
+  - Do not modify API, Docker, Makefile, source lifecycle jobs, or outbox worker.
+commit_message: Audit deck export path readiness
+validation_commands:
+  - python -m compileall deck_builder
+  - pytest tests/unit/test_export_gate.py -vv
+  - pytest tests/unit/test_slide_schema.py -vv
+  - make validate
+files_expected:
+  - docs/31_Deck_Export_Path_Audit.md
+  - .pfos/baby_steps/072_deck_export_path_audit.yaml
