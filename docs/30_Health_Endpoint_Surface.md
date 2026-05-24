@@ -104,3 +104,14 @@ beyond this low-risk normalization step.
   contracts.
 - `api/health.py` is still an empty placeholder for the future aggregate
   project health implementation.
+
+## Contract Coverage
+
+The implemented health surface is covered by:
+
+- `tests/integration/test_health_endpoint_normalization.py`
+- `tests/integration/test_source_retraction_status_e2e_hardening.py`
+
+The deferred aggregate `GET /health/projects/{project_id}` endpoint should not
+be treated as an implemented contract until its score, evidence coverage,
+approval velocity, and blocking-gate aggregation semantics are added.

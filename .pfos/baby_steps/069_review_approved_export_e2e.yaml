@@ -1,0 +1,15 @@
+step_id: 69
+name: review_approved_export_e2e
+branch: codex/step-69-review-approved-export-e2e
+objective: >
+  Add a deterministic local E2E proving review -> approved blocks without
+  review quorum, passes after required quorum, and approved -> exported
+  re-runs export guards before exporting.
+commit_message: Add review approved export E2E
+validation_commands:
+  - python3 -m compileall api system
+  - python3 -m pytest tests/integration/test_review_approved_export_e2e.py -vv
+  - make validate
+files_expected:
+  - tests/integration/test_review_approved_export_e2e.py
+  - .pfos/baby_steps/069_review_approved_export_e2e.yaml

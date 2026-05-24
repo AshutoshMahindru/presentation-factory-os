@@ -1,0 +1,22 @@
+step_id: 73
+name: complete_export_gate_tests
+branch: codex/step-73-complete-export-gate-tests
+objective: >
+  Complete export gate test coverage for degraded material slides, missing source
+  attribution, unsupported financial claims, PII exposure, pending outbox rows,
+  pending source retraction cascades, and stale downstream artifacts without
+  weakening export gates.
+constraints:
+  - Do not weaken gates.
+  - Keep baby-step YAML metadata-only.
+  - Do not modify Docker, Makefile, jobs, API, or outbox worker.
+commit_message: Complete export gate blocker coverage
+validation_commands:
+  - python3 -m compileall deck_builder financial_model
+  - python3 -m pytest tests/unit/test_export_gate.py -vv
+  - python3 -m pytest tests/unit/test_slide_schema.py -vv
+  - make validate
+files_expected:
+  - deck_builder/export_gate.py
+  - tests/unit/test_export_gate.py
+  - .pfos/baby_steps/073_complete_export_gate_tests.yaml

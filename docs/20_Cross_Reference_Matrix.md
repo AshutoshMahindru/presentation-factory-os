@@ -11,7 +11,7 @@
 | 5 | Provenance is mandatory | `04_Database_Schemas.sql`, `17_Observability_Spec.yaml` | Provenance table, traces table, model request logging, output hashes |
 | 6 | Humans approve as a ledger, not boolean | `15_Human_Approval_Ledger.yaml`, `08_StateMachine_Spec.yaml` | Immutable approval entries, quorum computation, role-aware approval gates |
 | 7 | Degradation is allowed but unsafe shipment is blocked | `12_Tool_Server_Degradation_Policy.yaml`, `21_DesignTokens.schema.json` | Fallback ladders with degraded status, materiality gates, and token schema validation |
-| 8 | Routing and evaluation must be observable | `07_StandardContextPayload.schema.json`, `14_Rubric_Engine_Spec.yaml`, `17_Observability_Spec.yaml` | Standard payload, routing log, rubric scores, alert thresholds, project health endpoint |
+| 8 | Routing and evaluation must be observable | `07_StandardContextPayload.schema.json`, `14_Rubric_Engine_Spec.yaml`, `17_Observability_Spec.yaml`, `30_Health_Endpoint_Surface.md` | Standard payload, routing log, rubric scores, alert thresholds, implemented health subresource endpoints |
 | 9 | Audience psychology must be schema-first | `04_Database_Schemas.sql`, `22_AudienceProfile.schema.json`, `08_StateMachine_Spec.yaml`, `14_Rubric_Engine_Spec.yaml` | `audience_profile` JSONB object check, schema codegen, intake transition guard, blocking rubric cap |
 | 10 | Narrative architecture must be deterministic without adding a phase | `06_SlideJobDefinition.schema.json`, `14_Rubric_Engine_Spec.yaml` | `narrative_arc` enum, deterministic `deck_builder/narrative_arc_validator.py`, structured objection-preemption map |
 | 11 | Outbox preserves cross-store consistency | `04_Database_Schemas.sql`, `13_Source_Lifecycle_Spec.yaml`, `17_Observability_Spec.yaml` | Postgres outbox, idempotent job-runner writes, outbox lag alerts, transition blocking |
@@ -47,6 +47,8 @@
 | `22_AudienceProfile.schema.json` | Workflow service, rubric engine, CI codegen, intake guard |
 | `23_Financial_Ingestion_Pipeline.yaml` | Tool-server, financial model validator, financial agent, CI YAML validation |
 | `24_API_Examples.md` | API implementers, workflow-service, approval API, integration-test authors |
+| `30_Health_Endpoint_Surface.md` | Workflow service, operators, integration-test authors |
+| `31_API_Control_Plane_Contracts.md` | Workflow service, approval API, source lifecycle API, integration-test authors |
 
 ## Consistency Checklist
 
@@ -86,3 +88,4 @@
 | Agent network isolation | `tests/integration/test_agent_network_isolation.py` must prove agent container cannot connect to Postgres, Neo4j, or Qdrant | Must pass |
 | Job-runner trust boundary | Job-runner may access data stores only as trusted deterministic infrastructure executing outbox/source lifecycle work; agent-service may not | Must pass |
 | API media type versioning | API examples and contract tests must use `application/vnd.pfos.v3.2.4+json` | Must pass |
+| Control-plane E2E coverage | Project lifecycle, review approval/export, and source retraction flows are covered by API/control-plane integration tests | Must pass |

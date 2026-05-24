@@ -1,0 +1,17 @@
+step_id: 67
+name: api_examples_contract_tests
+branch: codex/step-67-api-examples-contract-tests
+objective: >
+  Convert practical workflow-service examples from docs/24_API_Examples.md
+  into executable contract coverage for project creation, phase transition,
+  approval submission, and approval status endpoints without changing API
+  behavior.
+commit_message: Add API examples contract tests
+validation_commands:
+  - python3 -m compileall api system
+  - python3 -m pytest tests/integration/test_api_examples_contract.py -vv
+  - make validate
+files_expected:
+  - docs/24_API_Examples.md
+  - tests/integration/test_api_examples_contract.py
+  - .pfos/baby_steps/067_api_examples_contract_tests.yaml

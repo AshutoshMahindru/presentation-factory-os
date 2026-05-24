@@ -1,0 +1,15 @@
+step_id: 68
+name: project_lifecycle_happy_path_e2e
+branch: codex/step-68-project-lifecycle-happy-path-e2e
+objective: >
+  Add a deterministic local E2E covering workflow-service project creation
+  followed by created -> intake -> strategy phase transitions through existing
+  endpoints and repositories.
+commit_message: Add project lifecycle happy path E2E
+validation_commands:
+  - python3 -m compileall api system
+  - python3 -m pytest tests/integration/test_project_lifecycle_happy_path_e2e.py -vv
+  - make validate
+files_expected:
+  - tests/integration/test_project_lifecycle_happy_path_e2e.py
+  - .pfos/baby_steps/068_project_lifecycle_happy_path_e2e.yaml
