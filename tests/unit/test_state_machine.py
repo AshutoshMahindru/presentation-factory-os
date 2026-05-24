@@ -89,7 +89,8 @@ def test_transition_with_guards_passes_when_all_guards_satisfied():
         "strategy",
         "forward",
         context={
-            "project": {"audience_profile": valid_audience_profile()},
+            "project": {
+                "project_id": "00000000-0000-0000-0000-000000000045","audience_profile": valid_audience_profile()},
             "guards": {
                 "rubric_above_3_5": True,
                 "thesis_audience_aligned": True,

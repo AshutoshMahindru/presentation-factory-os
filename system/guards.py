@@ -5,6 +5,7 @@ from typing import Any
 
 from system.approval_quorum import ApprovalQuorum
 from system.approval_ledger_repository import ApprovalLedgerRepository
+from system.hard_gate_repository import HardGateRepository
 from system.audience_profile_validator import AudienceProfileValidator
 
 
@@ -32,10 +33,12 @@ class GuardEvaluator:
         audience_validator: AudienceProfileValidator | None = None,
         approval_quorum: ApprovalQuorum | None = None,
         approval_ledger_repository: ApprovalLedgerRepository | None = None,
+        hard_gate_repository: HardGateRepository | None = None,
     ) -> None:
         self.audience_validator = audience_validator or AudienceProfileValidator.from_file()
         self.approval_quorum = approval_quorum or ApprovalQuorum.from_yaml()
         self.approval_ledger_repository = approval_ledger_repository or ApprovalLedgerRepository()
+        self.hard_gate_repository = hard_gate_repository or HardGateRepository()
 
     def evaluate(self, guard_name: str, context: dict[str, Any]) -> GuardResult:
         if guard_name == "audience_psychology_adequate":
@@ -43,6 +46,9 @@ class GuardEvaluator:
 
         if guard_name == "approval_quorum_met":
             return self._approval_quorum_met(guard_name, context)
+
+        if guard_name == "no_blocking_rules":
+            return self._no_blocking_rules(guard_name, context)
 
         value = context.get("guards", {}).get(guard_name)
         if value is True:
@@ -75,6 +81,34 @@ class GuardEvaluator:
             name=guard_name,
             passed=False,
             reason="; ".join(result.errors),
+        )
+
+    def _no_blocking_rules(self, guard_name: str, context: dict[str, Any]) -> GuardResult:
+        project_id = context.get("project", {}).get("project_id")
+
+        if not isinstance(project_id, str) or not project_id.strip():
+            return GuardResult(
+                name=guard_name,
+                passed=False,
+                reason="project.project_id is required for hard-gate bundle evaluation.",
+            )
+
+        try:
+            result = self.hard_gate_repository.evaluate_no_blocking_rules(project_id)
+        except Exception as exc:
+            return GuardResult(
+                name=guard_name,
+                passed=False,
+                reason=f"Hard-gate bundle evaluation failed: {exc}",
+            )
+
+        if result.passed:
+            return GuardResult(name=guard_name, passed=True)
+
+        return GuardResult(
+            name=guard_name,
+            passed=False,
+            reason=result.reason(),
         )
 
     def _approval_quorum_met(self, guard_name: str, context: dict[str, Any]) -> GuardResult:

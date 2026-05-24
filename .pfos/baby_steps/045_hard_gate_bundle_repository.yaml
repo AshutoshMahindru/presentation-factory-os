@@ -1,0 +1,388 @@
+step_id: 45
+name: hard_gate_bundle_repository
+branch: baby-step-45-hard-gate-bundle-repository
+objective: >
+  Add a deterministic hard-gate bundle repository for no_blocking_rules. The first
+  real repository-backed check is no_failed_or_unprocessed_outbox_items via the
+  centralized OutboxRepository; remaining hard-gate checks are explicit pass stubs
+  until their repositories are implemented.
+
+commit_message: Add hard gate bundle repository
+
+commands:
+  - name: create hard gate repository and wire no_blocking_rules guard
+    run: |
+      cat > system/hard_gate_repository.py <<'PY'
+      from __future__ import annotations
+
+      from dataclasses import dataclass
+
+      from system.outbox_repository import OutboxRepository
+
+
+      @dataclass(frozen=True)
+      class HardGateCheckResult:
+          name: str
+          passed: bool
+          reason: str | None = None
+          metadata: dict[str, object] | None = None
+
+
+      @dataclass(frozen=True)
+      class HardGateBundleResult:
+          name: str
+          passed: bool
+          checks: tuple[HardGateCheckResult, ...]
+
+          @property
+          def failed_checks(self) -> tuple[HardGateCheckResult, ...]:
+              return tuple(check for check in self.checks if not check.passed)
+
+          def reason(self) -> str | None:
+              if self.passed:
+                  return None
+
+              failed = [
+                  f"{check.name}: {check.reason or 'failed'}"
+                  for check in self.failed_checks
+              ]
+              return "; ".join(failed)
+
+
+      class HardGateRepository:
+          """
+          Deterministic hard-gate bundle evaluator.
+
+          Baby Step 45 makes no_blocking_rules repository-backed for outbox state.
+          Other hard-gate checks are explicit pass stubs and should be replaced by
+          real repositories in later baby steps.
+          """
+
+          def __init__(self, outbox_repository: OutboxRepository | None = None) -> None:
+              self.outbox_repository = outbox_repository or OutboxRepository()
+
+          def evaluate_no_blocking_rules(self, project_id: str) -> HardGateBundleResult:
+              checks = (
+                  self._no_failed_or_unprocessed_outbox_items(project_id),
+                  self._stub_pass("no_stale_downstream_artifacts"),
+                  self._stub_pass("no_pending_retraction_cascade"),
+                  self._stub_pass("no_blocking_rules_table_flags"),
+              )
+
+              return HardGateBundleResult(
+                  name="no_blocking_rules",
+                  passed=all(check.passed for check in checks),
+                  checks=checks,
+              )
+
+          def _no_failed_or_unprocessed_outbox_items(self, project_id: str) -> HardGateCheckResult:
+              status = self.outbox_repository.get_project_outbox_status(project_id)
+
+              if not status.blocked:
+                  return HardGateCheckResult(
+                      name="no_failed_or_unprocessed_outbox_items",
+                      passed=True,
+                      metadata={
+                          "unprocessed_count": status.unprocessed_count,
+                          "failed_count": status.failed_count,
+                          "oldest_unprocessed_age_seconds": status.oldest_unprocessed_age_seconds,
+                      },
+                  )
+
+              return HardGateCheckResult(
+                  name="no_failed_or_unprocessed_outbox_items",
+                  passed=False,
+                  reason="project_has_failed_or_unprocessed_outbox_rows",
+                  metadata={
+                      "unprocessed_count": status.unprocessed_count,
+                      "failed_count": status.failed_count,
+                      "oldest_unprocessed_age_seconds": status.oldest_unprocessed_age_seconds,
+                  },
+              )
+
+          def _stub_pass(self, name: str) -> HardGateCheckResult:
+              return HardGateCheckResult(
+                  name=name,
+                  passed=True,
+                  reason=None,
+                  metadata={"implementation_status": "stub_pass_pending_repository"},
+              )
+      PY
+
+      python - <<'PY'
+      from pathlib import Path
+
+      path = Path("system/guards.py")
+      text = path.read_text()
+
+      if "from system.hard_gate_repository import HardGateRepository" not in text:
+          text = text.replace(
+              "from system.approval_ledger_repository import ApprovalLedgerRepository\n",
+              "from system.approval_ledger_repository import ApprovalLedgerRepository\nfrom system.hard_gate_repository import HardGateRepository\n",
+          )
+
+      old_init = '''    def __init__(
+              self,
+              audience_validator: AudienceProfileValidator | None = None,
+              approval_quorum: ApprovalQuorum | None = None,
+              approval_ledger_repository: ApprovalLedgerRepository | None = None,
+          ) -> None:
+              self.audience_validator = audience_validator or AudienceProfileValidator.from_file()
+              self.approval_quorum = approval_quorum or ApprovalQuorum.from_yaml()
+              self.approval_ledger_repository = approval_ledger_repository or ApprovalLedgerRepository()
+      '''
+
+      new_init = '''    def __init__(
+              self,
+              audience_validator: AudienceProfileValidator | None = None,
+              approval_quorum: ApprovalQuorum | None = None,
+              approval_ledger_repository: ApprovalLedgerRepository | None = None,
+              hard_gate_repository: HardGateRepository | None = None,
+          ) -> None:
+              self.audience_validator = audience_validator or AudienceProfileValidator.from_file()
+              self.approval_quorum = approval_quorum or ApprovalQuorum.from_yaml()
+              self.approval_ledger_repository = approval_ledger_repository or ApprovalLedgerRepository()
+              self.hard_gate_repository = hard_gate_repository or HardGateRepository()
+      '''
+
+      if old_init not in text:
+          raise SystemExit("Could not find GuardEvaluator __init__ block.")
+
+      text = text.replace(old_init, new_init)
+
+      old_evaluate = '''        if guard_name == "approval_quorum_met":
+                  return self._approval_quorum_met(guard_name, context)
+
+              value = context.get("guards", {}).get(guard_name)
+      '''
+
+      new_evaluate = '''        if guard_name == "approval_quorum_met":
+                  return self._approval_quorum_met(guard_name, context)
+
+              if guard_name == "no_blocking_rules":
+                  return self._no_blocking_rules(guard_name, context)
+
+              value = context.get("guards", {}).get(guard_name)
+      '''
+
+      if old_evaluate not in text:
+          raise SystemExit("Could not find approval_quorum_met evaluate block.")
+
+      text = text.replace(old_evaluate, new_evaluate)
+
+      insert_before = '''    def _approval_quorum_met(self, guard_name: str, context: dict[str, Any]) -> GuardResult:
+      '''
+
+      method = '''    def _no_blocking_rules(self, guard_name: str, context: dict[str, Any]) -> GuardResult:
+          project_id = context.get("project", {}).get("project_id")
+
+          if not isinstance(project_id, str) or not project_id.strip():
+              return GuardResult(
+                  name=guard_name,
+                  passed=False,
+                  reason="project.project_id is required for hard-gate bundle evaluation.",
+              )
+
+          try:
+              result = self.hard_gate_repository.evaluate_no_blocking_rules(project_id)
+          except Exception as exc:
+              return GuardResult(
+                  name=guard_name,
+                  passed=False,
+                  reason=f"Hard-gate bundle evaluation failed: {exc}",
+              )
+
+          if result.passed:
+              return GuardResult(name=guard_name, passed=True)
+
+          return GuardResult(
+              name=guard_name,
+              passed=False,
+              reason=result.reason(),
+          )
+
+      '''
+
+      if "_no_blocking_rules" not in text:
+          if insert_before not in text:
+              raise SystemExit("Could not find insertion point for _no_blocking_rules.")
+          text = text.replace(insert_before, method + insert_before)
+
+      path.write_text(text)
+      PY
+
+      cat > tests/unit/test_hard_gate_repository.py <<'PY'
+      from __future__ import annotations
+
+      from system.hard_gate_repository import HardGateRepository
+      from system.outbox_repository import OutboxStatus
+
+
+      class FakeOutboxRepository:
+          def __init__(self, status: OutboxStatus) -> None:
+              self.status = status
+              self.calls: list[str] = []
+
+          def get_project_outbox_status(self, project_id: str) -> OutboxStatus:
+              self.calls.append(project_id)
+              return self.status
+
+
+      def test_hard_gate_repository_passes_when_outbox_clean() -> None:
+          outbox_repository = FakeOutboxRepository(
+              OutboxStatus(
+                  project_id="project-1",
+                  blocked=False,
+                  unprocessed_count=0,
+                  failed_count=0,
+                  oldest_unprocessed_age_seconds=None,
+              )
+          )
+          repository = HardGateRepository(outbox_repository=outbox_repository)
+
+          result = repository.evaluate_no_blocking_rules("project-1")
+
+          assert result.passed is True
+          assert result.failed_checks == ()
+          assert result.reason() is None
+          assert outbox_repository.calls == ["project-1"]
+          assert [check.name for check in result.checks] == [
+              "no_failed_or_unprocessed_outbox_items",
+              "no_stale_downstream_artifacts",
+              "no_pending_retraction_cascade",
+              "no_blocking_rules_table_flags",
+          ]
+
+
+      def test_hard_gate_repository_blocks_when_outbox_blocked() -> None:
+          outbox_repository = FakeOutboxRepository(
+              OutboxStatus(
+                  project_id="project-2",
+                  blocked=True,
+                  unprocessed_count=3,
+                  failed_count=1,
+                  oldest_unprocessed_age_seconds=91,
+              )
+          )
+          repository = HardGateRepository(outbox_repository=outbox_repository)
+
+          result = repository.evaluate_no_blocking_rules("project-2")
+
+          assert result.passed is False
+          assert len(result.failed_checks) == 1
+
+          failed = result.failed_checks[0]
+          assert failed.name == "no_failed_or_unprocessed_outbox_items"
+          assert failed.reason == "project_has_failed_or_unprocessed_outbox_rows"
+          assert failed.metadata == {
+              "unprocessed_count": 3,
+              "failed_count": 1,
+              "oldest_unprocessed_age_seconds": 91,
+          }
+          assert "project_has_failed_or_unprocessed_outbox_rows" in str(result.reason())
+      PY
+
+      cat > tests/unit/test_no_blocking_rules_guard_repository.py <<'PY'
+      from __future__ import annotations
+
+      from system.guards import GuardEvaluator
+      from system.hard_gate_repository import HardGateBundleResult, HardGateCheckResult
+
+
+      class FakeHardGateRepository:
+          def __init__(self, result: HardGateBundleResult) -> None:
+              self.result = result
+              self.calls: list[str] = []
+
+          def evaluate_no_blocking_rules(self, project_id: str) -> HardGateBundleResult:
+              self.calls.append(project_id)
+              return self.result
+
+
+      def test_no_blocking_rules_guard_uses_hard_gate_repository_pass() -> None:
+          hard_gate_repository = FakeHardGateRepository(
+              HardGateBundleResult(
+                  name="no_blocking_rules",
+                  passed=True,
+                  checks=(
+                      HardGateCheckResult(
+                          name="no_failed_or_unprocessed_outbox_items",
+                          passed=True,
+                      ),
+                  ),
+              )
+          )
+
+          evaluator = GuardEvaluator(
+              audience_validator=object(),  # not used
+              hard_gate_repository=hard_gate_repository,
+          )
+
+          result = evaluator.evaluate(
+              "no_blocking_rules",
+              {
+                  "project": {"project_id": "project-1"},
+                  "guards": {"no_blocking_rules": False},
+              },
+          )
+
+          assert result.passed is True
+          assert hard_gate_repository.calls == ["project-1"]
+
+
+      def test_no_blocking_rules_guard_uses_hard_gate_repository_failure() -> None:
+          hard_gate_repository = FakeHardGateRepository(
+              HardGateBundleResult(
+                  name="no_blocking_rules",
+                  passed=False,
+                  checks=(
+                      HardGateCheckResult(
+                          name="no_failed_or_unprocessed_outbox_items",
+                          passed=False,
+                          reason="project_has_failed_or_unprocessed_outbox_rows",
+                      ),
+                  ),
+              )
+          )
+
+          evaluator = GuardEvaluator(
+              audience_validator=object(),  # not used
+              hard_gate_repository=hard_gate_repository,
+          )
+
+          result = evaluator.evaluate(
+              "no_blocking_rules",
+              {
+                  "project": {"project_id": "project-2"},
+                  "guards": {"no_blocking_rules": True},
+              },
+          )
+
+          assert result.passed is False
+          assert "project_has_failed_or_unprocessed_outbox_rows" in str(result.reason)
+          assert hard_gate_repository.calls == ["project-2"]
+
+
+      def test_no_blocking_rules_guard_requires_project_id() -> None:
+          evaluator = GuardEvaluator(audience_validator=object())
+
+          result = evaluator.evaluate("no_blocking_rules", {"project": {}, "guards": {}})
+
+          assert result.passed is False
+          assert "project.project_id is required" in str(result.reason)
+      PY
+
+validation_commands:
+  - python -m compileall system api
+  - pytest tests/unit/test_hard_gate_repository.py -vv
+  - pytest tests/unit/test_no_blocking_rules_guard_repository.py -vv
+  - pytest tests/unit/test_outbox_repository.py -vv
+  - pytest tests/integration/test_workflow_outbox_repository_blocking.py -vv
+  - make validate
+
+files_expected:
+  - system/hard_gate_repository.py
+  - system/guards.py
+  - tests/unit/test_hard_gate_repository.py
+  - tests/unit/test_no_blocking_rules_guard_repository.py
+  - .pfos/baby_steps/045_hard_gate_bundle_repository.yaml
