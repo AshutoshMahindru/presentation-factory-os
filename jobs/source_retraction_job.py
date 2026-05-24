@@ -44,10 +44,17 @@ class SourceRetractionJob:
         )
         self.outbox_repository = outbox_repository or OutboxRepository()
 
-    def run_once(self, limit: int = 50) -> SourceRetractionJobResult:
+    def run_once(self, limit: int = 50, dry_run: bool = False) -> SourceRetractionJobResult:
         events = self.source_lifecycle_event_repository.list_pending_retraction_events(limit=limit)
 
         scanned_count = len(events)
+        if dry_run:
+            return SourceRetractionJobResult(
+                scanned_count=scanned_count,
+                enqueued_count=0,
+                failed_count=0,
+            )
+
         enqueued_count = 0
         failed_count = 0
 
@@ -101,10 +108,15 @@ def main(argv: list[str] | None = None) -> int:
         default=50,
         help="Maximum pending retraction lifecycle events to scan, 1-50.",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Scan pending retraction lifecycle events without enqueueing or mutating rows.",
+    )
     args = parser.parse_args(argv)
 
     try:
-        result = SourceRetractionJob().run_once(limit=args.limit)
+        result = SourceRetractionJob().run_once(limit=args.limit, dry_run=args.dry_run)
     except Exception as exc:
         print(f"source_retraction_job_error={exc}", file=sys.stderr)
         return 1

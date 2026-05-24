@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import os
 import subprocess
 from dataclasses import dataclass
@@ -157,6 +158,7 @@ class OutboxWorker:
         target_store: str = "neo4j",
         limit: int = 50,
         project_id: str | None = None,
+        dry_run: bool = False,
     ) -> OutboxWorkerResult:
         rows = self.outbox_repository.list_unprocessed_rows(
             target_store=target_store,
@@ -165,6 +167,13 @@ class OutboxWorker:
         )
 
         scanned_count = len(rows)
+        if dry_run:
+            return OutboxWorkerResult(
+                scanned_count=scanned_count,
+                processed_count=0,
+                failed_count=0,
+            )
+
         processed_count = 0
         failed_count = 0
 
@@ -197,8 +206,16 @@ class OutboxWorker:
         self.outbox_repository.mark_processed(row.outbox_id)
 
 
-def main() -> int:
-    result = OutboxWorker().run_once()
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Run one outbox worker pass.")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Scan unprocessed outbox rows without invoking handlers or mutating rows.",
+    )
+    args = parser.parse_args(argv)
+
+    result = OutboxWorker().run_once(dry_run=args.dry_run)
     print(result.as_cli_line())
     return 0
 
