@@ -2,6 +2,19 @@ from __future__ import annotations
 
 from system.hard_gate_repository import HardGateRepository
 from system.outbox_repository import OutboxStatus
+from system.source_lifecycle_repository import RetractionCascadeStatus
+
+
+class FakeSourceLifecycleRepository:
+    def get_project_retraction_cascade_status(self, project_id: str) -> RetractionCascadeStatus:
+        return RetractionCascadeStatus(
+            project_id=project_id,
+            blocked=False,
+            pending_count=0,
+            processing_count=0,
+            failed_count=0,
+            oldest_open_age_seconds=None,
+        )
 
 
 class FakeOutboxRepository:
@@ -24,7 +37,10 @@ def test_hard_gate_repository_passes_when_outbox_clean() -> None:
             oldest_unprocessed_age_seconds=None,
         )
     )
-    repository = HardGateRepository(outbox_repository=outbox_repository)
+    repository = HardGateRepository(
+        outbox_repository=outbox_repository,
+        source_lifecycle_repository=FakeSourceLifecycleRepository(),
+    )
 
     result = repository.evaluate_no_blocking_rules("project-1")
 
@@ -50,7 +66,10 @@ def test_hard_gate_repository_blocks_when_outbox_blocked() -> None:
             oldest_unprocessed_age_seconds=91,
         )
     )
-    repository = HardGateRepository(outbox_repository=outbox_repository)
+    repository = HardGateRepository(
+        outbox_repository=outbox_repository,
+        source_lifecycle_repository=FakeSourceLifecycleRepository(),
+    )
 
     result = repository.evaluate_no_blocking_rules("project-2")
 

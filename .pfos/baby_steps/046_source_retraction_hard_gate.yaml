@@ -1,0 +1,384 @@
+step_id: 46
+name: source_retraction_hard_gate
+branch: baby-step-46-source-retraction-hard-gate
+objective: >
+  Add a deterministic source lifecycle repository for pending retraction cascade
+  status and wire no_pending_retraction_cascade into the hard-gate bundle.
+
+commit_message: Add source retraction hard gate
+
+commands:
+  - name: create source lifecycle repository and wire hard gate
+    run: |
+      cat > system/source_lifecycle_repository.py <<'PY'
+      from __future__ import annotations
+
+      import subprocess
+      from dataclasses import dataclass
+
+
+      COMPOSE_FILE = "docker-compose.apps.yaml"
+
+
+      @dataclass(frozen=True)
+      class RetractionCascadeStatus:
+          project_id: str
+          blocked: bool
+          pending_count: int
+          processing_count: int
+          failed_count: int
+          oldest_open_age_seconds: int | None
+
+
+      class SourceLifecycleRepository:
+          """
+          Deterministic Postgres-backed source lifecycle status reader.
+
+          A project is blocked when it has any open retraction cascade event in
+          pending, processing, or failed state.
+          """
+
+          OPEN_STATUSES = ("pending", "processing", "failed")
+
+          def get_project_retraction_cascade_status(self, project_id: str) -> RetractionCascadeStatus:
+              sql = f"""
+              SELECT
+                count(*) FILTER (WHERE processing_status = 'pending') AS pending_count,
+                count(*) FILTER (WHERE processing_status = 'processing') AS processing_count,
+                count(*) FILTER (WHERE processing_status = 'failed') AS failed_count,
+                floor(
+                  extract(
+                    epoch FROM (
+                      now() - min(created_at) FILTER (
+                        WHERE processing_status IN ('pending', 'processing', 'failed')
+                      )
+                    )
+                  )
+                )::int AS oldest_open_age_seconds
+              FROM source_lifecycle_events
+              WHERE project_id = '{self._sql(project_id)}'
+                AND event_type = 'retracted'
+                AND processing_status IN ('pending', 'processing', 'failed');
+              """
+
+              result = self._psql(sql)
+              if result.returncode != 0:
+                  raise RuntimeError(result.stderr)
+
+              line = result.stdout.strip()
+              if not line:
+                  return RetractionCascadeStatus(
+                      project_id=project_id,
+                      blocked=False,
+                      pending_count=0,
+                      processing_count=0,
+                      failed_count=0,
+                      oldest_open_age_seconds=None,
+                  )
+
+              parts = [part.strip() for part in line.split("|")]
+              if len(parts) != 4:
+                  raise RuntimeError(f"Unexpected retraction cascade status result: {result.stdout!r}")
+
+              pending_count = self._parse_int(parts[0])
+              processing_count = self._parse_int(parts[1])
+              failed_count = self._parse_int(parts[2])
+              oldest_age = self._parse_optional_int(parts[3])
+
+              return RetractionCascadeStatus(
+                  project_id=project_id,
+                  blocked=(pending_count + processing_count + failed_count) > 0,
+                  pending_count=pending_count,
+                  processing_count=processing_count,
+                  failed_count=failed_count,
+                  oldest_open_age_seconds=oldest_age,
+              )
+
+          def _psql(self, sql: str) -> subprocess.CompletedProcess[str]:
+              return subprocess.run(
+                  [
+                      "docker",
+                      "compose",
+                      "-f",
+                      COMPOSE_FILE,
+                      "exec",
+                      "-T",
+                      "postgres",
+                      "psql",
+                      "-U",
+                      "pfos",
+                      "-d",
+                      "pfos",
+                      "-v",
+                      "ON_ERROR_STOP=1",
+                      "-A",
+                      "-t",
+                      "-F",
+                      "|",
+                      "-c",
+                      sql,
+                  ],
+                  text=True,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
+                  check=False,
+              )
+
+          def _parse_int(self, value: str) -> int:
+              if value == "":
+                  return 0
+              return int(value)
+
+          def _parse_optional_int(self, value: str) -> int | None:
+              if value == "":
+                  return None
+              return int(value)
+
+          def _sql(self, value: str) -> str:
+              return str(value).replace("'", "''")
+      PY
+
+      python - <<'PY'
+      from pathlib import Path
+
+      path = Path("system/hard_gate_repository.py")
+      text = path.read_text()
+
+      if "from system.source_lifecycle_repository import SourceLifecycleRepository" not in text:
+          text = text.replace(
+              "from system.outbox_repository import OutboxRepository\n",
+              "from system.outbox_repository import OutboxRepository\nfrom system.source_lifecycle_repository import SourceLifecycleRepository\n",
+          )
+
+      old_init = '''    def __init__(self, outbox_repository: OutboxRepository | None = None) -> None:
+              self.outbox_repository = outbox_repository or OutboxRepository()
+      '''
+
+      new_init = '''    def __init__(
+              self,
+              outbox_repository: OutboxRepository | None = None,
+              source_lifecycle_repository: SourceLifecycleRepository | None = None,
+          ) -> None:
+              self.outbox_repository = outbox_repository or OutboxRepository()
+              self.source_lifecycle_repository = source_lifecycle_repository or SourceLifecycleRepository()
+      '''
+
+      if old_init not in text:
+          raise SystemExit("Could not find HardGateRepository __init__ block.")
+
+      text = text.replace(old_init, new_init)
+
+      text = text.replace(
+          '''                self._stub_pass("no_pending_retraction_cascade"),''',
+          '''                self._no_pending_retraction_cascade(project_id),''',
+      )
+
+      insert_before = '''    def _stub_pass(self, name: str) -> HardGateCheckResult:
+      '''
+
+      method = '''    def _no_pending_retraction_cascade(self, project_id: str) -> HardGateCheckResult:
+          status = self.source_lifecycle_repository.get_project_retraction_cascade_status(project_id)
+
+          if not status.blocked:
+              return HardGateCheckResult(
+                  name="no_pending_retraction_cascade",
+                  passed=True,
+                  metadata={
+                      "pending_count": status.pending_count,
+                      "processing_count": status.processing_count,
+                      "failed_count": status.failed_count,
+                      "oldest_open_age_seconds": status.oldest_open_age_seconds,
+                  },
+              )
+
+          return HardGateCheckResult(
+              name="no_pending_retraction_cascade",
+              passed=False,
+              reason="project_has_open_retraction_cascade_events",
+              metadata={
+                  "pending_count": status.pending_count,
+                  "processing_count": status.processing_count,
+                  "failed_count": status.failed_count,
+                  "oldest_open_age_seconds": status.oldest_open_age_seconds,
+              },
+          )
+
+      '''
+
+      if "def _no_pending_retraction_cascade" not in text:
+          if insert_before not in text:
+              raise SystemExit("Could not find insertion point for source retraction hard gate.")
+          text = text.replace(insert_before, method + insert_before)
+
+      path.write_text(text)
+      PY
+
+      cat > tests/unit/test_source_lifecycle_repository.py <<'PY'
+      from __future__ import annotations
+
+      from system.source_lifecycle_repository import (
+          RetractionCascadeStatus,
+          SourceLifecycleRepository,
+      )
+
+
+      class FakeResult:
+          def __init__(self, stdout: str, returncode: int = 0, stderr: str = "") -> None:
+              self.stdout = stdout
+              self.returncode = returncode
+              self.stderr = stderr
+
+
+      def test_source_lifecycle_repository_reports_clean_project() -> None:
+          repository = SourceLifecycleRepository()
+
+          def fake_psql(sql: str) -> FakeResult:
+              return FakeResult("0|0|0|\n")
+
+          repository._psql = fake_psql  # type: ignore[method-assign]
+
+          status = repository.get_project_retraction_cascade_status("project-1")
+
+          assert status == RetractionCascadeStatus(
+              project_id="project-1",
+              blocked=False,
+              pending_count=0,
+              processing_count=0,
+              failed_count=0,
+              oldest_open_age_seconds=None,
+          )
+
+
+      def test_source_lifecycle_repository_reports_open_retraction_events_as_blocking() -> None:
+          repository = SourceLifecycleRepository()
+
+          def fake_psql(sql: str) -> FakeResult:
+              return FakeResult("2|1|1|77\n")
+
+          repository._psql = fake_psql  # type: ignore[method-assign]
+
+          status = repository.get_project_retraction_cascade_status("project-2")
+
+          assert status.blocked is True
+          assert status.pending_count == 2
+          assert status.processing_count == 1
+          assert status.failed_count == 1
+          assert status.oldest_open_age_seconds == 77
+
+
+      def test_source_lifecycle_repository_sql_is_project_scoped_and_retraction_only() -> None:
+          repository = SourceLifecycleRepository()
+          captured: dict[str, str] = {}
+
+          def fake_psql(sql: str) -> FakeResult:
+              captured["sql"] = sql
+              return FakeResult("0|0|0|\n")
+
+          repository._psql = fake_psql  # type: ignore[method-assign]
+          repository.get_project_retraction_cascade_status("project-with-'quote")
+
+          assert "FROM source_lifecycle_events" in captured["sql"]
+          assert "project_id = 'project-with-''quote'" in captured["sql"]
+          assert "event_type = 'retracted'" in captured["sql"]
+          assert "processing_status IN ('pending', 'processing', 'failed')" in captured["sql"]
+      PY
+
+      cat > tests/unit/test_hard_gate_source_retraction.py <<'PY'
+      from __future__ import annotations
+
+      from system.hard_gate_repository import HardGateRepository
+      from system.outbox_repository import OutboxStatus
+      from system.source_lifecycle_repository import RetractionCascadeStatus
+
+
+      class FakeOutboxRepository:
+          def get_project_outbox_status(self, project_id: str) -> OutboxStatus:
+              return OutboxStatus(
+                  project_id=project_id,
+                  blocked=False,
+                  unprocessed_count=0,
+                  failed_count=0,
+                  oldest_unprocessed_age_seconds=None,
+              )
+
+
+      class FakeSourceLifecycleRepository:
+          def __init__(self, status: RetractionCascadeStatus) -> None:
+              self.status = status
+              self.calls: list[str] = []
+
+          def get_project_retraction_cascade_status(self, project_id: str) -> RetractionCascadeStatus:
+              self.calls.append(project_id)
+              return self.status
+
+
+      def test_hard_gate_repository_passes_when_no_retraction_cascade_open() -> None:
+          source_lifecycle_repository = FakeSourceLifecycleRepository(
+              RetractionCascadeStatus(
+                  project_id="project-1",
+                  blocked=False,
+                  pending_count=0,
+                  processing_count=0,
+                  failed_count=0,
+                  oldest_open_age_seconds=None,
+              )
+          )
+
+          repository = HardGateRepository(
+              outbox_repository=FakeOutboxRepository(),
+              source_lifecycle_repository=source_lifecycle_repository,
+          )
+
+          result = repository.evaluate_no_blocking_rules("project-1")
+
+          assert result.passed is True
+          assert source_lifecycle_repository.calls == ["project-1"]
+
+
+      def test_hard_gate_repository_blocks_when_retraction_cascade_open() -> None:
+          source_lifecycle_repository = FakeSourceLifecycleRepository(
+              RetractionCascadeStatus(
+                  project_id="project-2",
+                  blocked=True,
+                  pending_count=2,
+                  processing_count=1,
+                  failed_count=1,
+                  oldest_open_age_seconds=77,
+              )
+          )
+
+          repository = HardGateRepository(
+              outbox_repository=FakeOutboxRepository(),
+              source_lifecycle_repository=source_lifecycle_repository,
+          )
+
+          result = repository.evaluate_no_blocking_rules("project-2")
+
+          assert result.passed is False
+          assert len(result.failed_checks) == 1
+
+          failed = result.failed_checks[0]
+          assert failed.name == "no_pending_retraction_cascade"
+          assert failed.reason == "project_has_open_retraction_cascade_events"
+          assert failed.metadata == {
+              "pending_count": 2,
+              "processing_count": 1,
+              "failed_count": 1,
+              "oldest_open_age_seconds": 77,
+          }
+      PY
+
+validation_commands:
+  - python -m compileall system api
+  - pytest tests/unit/test_source_lifecycle_repository.py -vv
+  - pytest tests/unit/test_hard_gate_source_retraction.py -vv
+  - pytest tests/unit/test_hard_gate_repository.py -vv
+  - pytest tests/unit/test_no_blocking_rules_guard_repository.py -vv
+  - make validate
+
+files_expected:
+  - system/source_lifecycle_repository.py
+  - system/hard_gate_repository.py
+  - tests/unit/test_source_lifecycle_repository.py
+  - tests/unit/test_hard_gate_source_retraction.py
+  - .pfos/baby_steps/046_source_retraction_hard_gate.yaml
