@@ -1,0 +1,15 @@
+step_id: 84
+name: ci_parity_audit
+branch: codex/step-84-ci-parity-audit
+objective: >
+  Audit CI parity versus local PFOS v3.2.4 validation after Docker
+  stabilization, covering Makefile validation targets, documented CI schema
+  validation, Docker doctor coverage, schema validation, no-agent database
+  import guards, integration test readiness, and load-test readiness without
+  changing application, Docker, source lifecycle, or outbox behavior.
+commit_message: Add CI parity audit
+validation_commands:
+  - make validate
+files_expected:
+  - docs/32_CI_Parity_Audit.md
+  - .pfos/baby_steps/084_ci_parity_audit.yaml
