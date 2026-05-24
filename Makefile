@@ -16,3 +16,8 @@ validate-yaml:
 	python scripts/validate_yaml.py
 
 validate: compile validate-json validate-yaml no-agent-db-imports test
+
+
+validate-sql-live:
+	docker cp infra/postgres/init/001_schema.sql pfos-postgres-dev:/tmp/001_schema.sql
+	docker compose -f docker-compose.apps.yaml exec -T postgres psql -U pfos -d pfos -f /tmp/001_schema.sql
