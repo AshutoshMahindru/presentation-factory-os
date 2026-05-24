@@ -1,0 +1,384 @@
+step_id: 48
+name: stale_artifact_hard_gate
+branch: baby-step-48-stale-artifact-hard-gate
+objective: >
+  Add a deterministic stale artifact repository and wire no_stale_downstream_artifacts
+  into the hard-gate bundle. A project is blocked when financial_cells or design_tokens
+  contain artifacts with artifact_status = stale_due_to_retreat.
+
+commit_message: Add stale artifact hard gate
+
+commands:
+  - name: create stale artifact repository and wire hard gate
+    run: |
+      cat > system/stale_artifact_repository.py <<'PY'
+      from __future__ import annotations
+
+      import subprocess
+      from dataclasses import dataclass
+
+
+      COMPOSE_FILE = "docker-compose.apps.yaml"
+
+
+      @dataclass(frozen=True)
+      class StaleArtifactStatus:
+          project_id: str
+          blocked: bool
+          financial_cells_count: int
+          design_tokens_count: int
+          total_count: int
+
+
+      class StaleArtifactRepository:
+          """
+          Deterministic Postgres-backed stale artifact status reader.
+
+          A project is blocked when any scoped artifact is marked stale_due_to_retreat.
+          Baby Step 48 covers the current Postgres artifact tables that already expose
+          artifact_status: financial_cells and design_tokens.
+          """
+
+          def get_project_stale_artifact_status(self, project_id: str) -> StaleArtifactStatus:
+              sql = f"""
+              SELECT
+                (
+                  SELECT count(*)
+                  FROM financial_cells
+                  WHERE project_id = '{self._sql(project_id)}'
+                    AND artifact_status = 'stale_due_to_retreat'
+                ) AS financial_cells_count,
+                (
+                  SELECT count(*)
+                  FROM design_tokens
+                  WHERE project_id = '{self._sql(project_id)}'
+                    AND artifact_status = 'stale_due_to_retreat'
+                ) AS design_tokens_count;
+              """
+
+              result = self._psql(sql)
+              if result.returncode != 0:
+                  raise RuntimeError(result.stderr)
+
+              line = result.stdout.strip()
+              if not line:
+                  return StaleArtifactStatus(
+                      project_id=project_id,
+                      blocked=False,
+                      financial_cells_count=0,
+                      design_tokens_count=0,
+                      total_count=0,
+                  )
+
+              parts = [part.strip() for part in line.split("|")]
+              if len(parts) != 2:
+                  raise RuntimeError(f"Unexpected stale artifact status result: {result.stdout!r}")
+
+              financial_cells_count = self._parse_int(parts[0])
+              design_tokens_count = self._parse_int(parts[1])
+              total_count = financial_cells_count + design_tokens_count
+
+              return StaleArtifactStatus(
+                  project_id=project_id,
+                  blocked=total_count > 0,
+                  financial_cells_count=financial_cells_count,
+                  design_tokens_count=design_tokens_count,
+                  total_count=total_count,
+              )
+
+          def _psql(self, sql: str) -> subprocess.CompletedProcess[str]:
+              return subprocess.run(
+                  [
+                      "docker",
+                      "compose",
+                      "-f",
+                      COMPOSE_FILE,
+                      "exec",
+                      "-T",
+                      "postgres",
+                      "psql",
+                      "-U",
+                      "pfos",
+                      "-d",
+                      "pfos",
+                      "-v",
+                      "ON_ERROR_STOP=1",
+                      "-A",
+                      "-t",
+                      "-F",
+                      "|",
+                      "-c",
+                      sql,
+                  ],
+                  text=True,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
+                  check=False,
+              )
+
+          def _parse_int(self, value: str) -> int:
+              if value == "":
+                  return 0
+              return int(value)
+
+          def _sql(self, value: str) -> str:
+              return str(value).replace("'", "''")
+      PY
+
+      python - <<'PY'
+      from pathlib import Path
+
+      path = Path("system/hard_gate_repository.py")
+      text = path.read_text()
+
+      if "from system.stale_artifact_repository import StaleArtifactRepository" not in text:
+          text = text.replace(
+              "from system.source_lifecycle_repository import SourceLifecycleRepository\n",
+              "from system.source_lifecycle_repository import SourceLifecycleRepository\nfrom system.stale_artifact_repository import StaleArtifactRepository\n",
+          )
+
+      old_init = '''    def __init__(
+          self,
+          outbox_repository: OutboxRepository | None = None,
+          source_lifecycle_repository: SourceLifecycleRepository | None = None,
+      ) -> None:
+          self.outbox_repository = outbox_repository or OutboxRepository()
+          self.source_lifecycle_repository = source_lifecycle_repository or SourceLifecycleRepository()
+      '''
+
+      new_init = '''    def __init__(
+          self,
+          outbox_repository: OutboxRepository | None = None,
+          source_lifecycle_repository: SourceLifecycleRepository | None = None,
+          stale_artifact_repository: StaleArtifactRepository | None = None,
+      ) -> None:
+          self.outbox_repository = outbox_repository or OutboxRepository()
+          self.source_lifecycle_repository = source_lifecycle_repository or SourceLifecycleRepository()
+          self.stale_artifact_repository = stale_artifact_repository or StaleArtifactRepository()
+      '''
+
+      if old_init not in text:
+          raise SystemExit("Could not find HardGateRepository __init__ block.")
+
+      text = text.replace(old_init, new_init)
+
+      text = text.replace(
+          '''            self._stub_pass("no_stale_downstream_artifacts"),''',
+          '''            self._no_stale_downstream_artifacts(project_id),''',
+      )
+
+      insert_before = '''    def _no_pending_retraction_cascade(self, project_id: str) -> HardGateCheckResult:
+      '''
+
+      method = '''    def _no_stale_downstream_artifacts(self, project_id: str) -> HardGateCheckResult:
+          status = self.stale_artifact_repository.get_project_stale_artifact_status(project_id)
+
+          if not status.blocked:
+              return HardGateCheckResult(
+                  name="no_stale_downstream_artifacts",
+                  passed=True,
+                  metadata={
+                      "financial_cells_count": status.financial_cells_count,
+                      "design_tokens_count": status.design_tokens_count,
+                      "total_count": status.total_count,
+                  },
+              )
+
+          return HardGateCheckResult(
+              name="no_stale_downstream_artifacts",
+              passed=False,
+              reason="project_has_stale_downstream_artifacts",
+              metadata={
+                  "financial_cells_count": status.financial_cells_count,
+                  "design_tokens_count": status.design_tokens_count,
+                  "total_count": status.total_count,
+              },
+          )
+
+      '''
+
+      if "def _no_stale_downstream_artifacts" not in text:
+          if insert_before not in text:
+              raise SystemExit("Could not find insertion point for stale artifact hard gate.")
+          text = text.replace(insert_before, method + insert_before)
+
+      path.write_text(text)
+      PY
+
+      cat > tests/unit/test_stale_artifact_repository.py <<'PY'
+      from __future__ import annotations
+
+      from system.stale_artifact_repository import StaleArtifactRepository, StaleArtifactStatus
+
+
+      class FakeResult:
+          def __init__(self, stdout: str, returncode: int = 0, stderr: str = "") -> None:
+              self.stdout = stdout
+              self.returncode = returncode
+              self.stderr = stderr
+
+
+      def test_stale_artifact_repository_reports_clean_project() -> None:
+          repository = StaleArtifactRepository()
+
+          def fake_psql(sql: str) -> FakeResult:
+              return FakeResult("0|0\n")
+
+          repository._psql = fake_psql  # type: ignore[method-assign]
+
+          status = repository.get_project_stale_artifact_status("project-1")
+
+          assert status == StaleArtifactStatus(
+              project_id="project-1",
+              blocked=False,
+              financial_cells_count=0,
+              design_tokens_count=0,
+              total_count=0,
+          )
+
+
+      def test_stale_artifact_repository_reports_stale_artifacts_as_blocking() -> None:
+          repository = StaleArtifactRepository()
+
+          def fake_psql(sql: str) -> FakeResult:
+              return FakeResult("2|3\n")
+
+          repository._psql = fake_psql  # type: ignore[method-assign]
+
+          status = repository.get_project_stale_artifact_status("project-2")
+
+          assert status.blocked is True
+          assert status.financial_cells_count == 2
+          assert status.design_tokens_count == 3
+          assert status.total_count == 5
+
+
+      def test_stale_artifact_repository_sql_is_project_scoped_and_stale_only() -> None:
+          repository = StaleArtifactRepository()
+          captured: dict[str, str] = {}
+
+          def fake_psql(sql: str) -> FakeResult:
+              captured["sql"] = sql
+              return FakeResult("0|0\n")
+
+          repository._psql = fake_psql  # type: ignore[method-assign]
+          repository.get_project_stale_artifact_status("project-with-'quote")
+
+          assert "FROM financial_cells" in captured["sql"]
+          assert "FROM design_tokens" in captured["sql"]
+          assert "project_id = 'project-with-''quote'" in captured["sql"]
+          assert "artifact_status = 'stale_due_to_retreat'" in captured["sql"]
+      PY
+
+      cat > tests/unit/test_hard_gate_stale_artifacts.py <<'PY'
+      from __future__ import annotations
+
+      from system.hard_gate_repository import HardGateRepository
+      from system.outbox_repository import OutboxStatus
+      from system.source_lifecycle_repository import RetractionCascadeStatus
+      from system.stale_artifact_repository import StaleArtifactStatus
+
+
+      class FakeOutboxRepository:
+          def get_project_outbox_status(self, project_id: str) -> OutboxStatus:
+              return OutboxStatus(
+                  project_id=project_id,
+                  blocked=False,
+                  unprocessed_count=0,
+                  failed_count=0,
+                  oldest_unprocessed_age_seconds=None,
+              )
+
+
+      class FakeSourceLifecycleRepository:
+          def get_project_retraction_cascade_status(self, project_id: str) -> RetractionCascadeStatus:
+              return RetractionCascadeStatus(
+                  project_id=project_id,
+                  blocked=False,
+                  pending_count=0,
+                  processing_count=0,
+                  failed_count=0,
+                  oldest_open_age_seconds=None,
+              )
+
+
+      class FakeStaleArtifactRepository:
+          def __init__(self, status: StaleArtifactStatus) -> None:
+              self.status = status
+              self.calls: list[str] = []
+
+          def get_project_stale_artifact_status(self, project_id: str) -> StaleArtifactStatus:
+              self.calls.append(project_id)
+              return self.status
+
+
+      def test_hard_gate_repository_passes_when_no_stale_artifacts() -> None:
+          stale_artifact_repository = FakeStaleArtifactRepository(
+              StaleArtifactStatus(
+                  project_id="project-1",
+                  blocked=False,
+                  financial_cells_count=0,
+                  design_tokens_count=0,
+                  total_count=0,
+              )
+          )
+
+          repository = HardGateRepository(
+              outbox_repository=FakeOutboxRepository(),
+              source_lifecycle_repository=FakeSourceLifecycleRepository(),
+              stale_artifact_repository=stale_artifact_repository,
+          )
+
+          result = repository.evaluate_no_blocking_rules("project-1")
+
+          assert result.passed is True
+          assert stale_artifact_repository.calls == ["project-1"]
+
+
+      def test_hard_gate_repository_blocks_when_stale_artifacts_exist() -> None:
+          stale_artifact_repository = FakeStaleArtifactRepository(
+              StaleArtifactStatus(
+                  project_id="project-2",
+                  blocked=True,
+                  financial_cells_count=2,
+                  design_tokens_count=3,
+                  total_count=5,
+              )
+          )
+
+          repository = HardGateRepository(
+              outbox_repository=FakeOutboxRepository(),
+              source_lifecycle_repository=FakeSourceLifecycleRepository(),
+              stale_artifact_repository=stale_artifact_repository,
+          )
+
+          result = repository.evaluate_no_blocking_rules("project-2")
+
+          assert result.passed is False
+          assert len(result.failed_checks) == 1
+
+          failed = result.failed_checks[0]
+          assert failed.name == "no_stale_downstream_artifacts"
+          assert failed.reason == "project_has_stale_downstream_artifacts"
+          assert failed.metadata == {
+              "financial_cells_count": 2,
+              "design_tokens_count": 3,
+              "total_count": 5,
+          }
+      PY
+
+validation_commands:
+  - python -m compileall system api
+  - pytest tests/unit/test_stale_artifact_repository.py -vv
+  - pytest tests/unit/test_hard_gate_stale_artifacts.py -vv
+  - pytest tests/unit/test_hard_gate_repository.py -vv
+  - pytest tests/unit/test_hard_gate_source_retraction.py -vv
+  - pytest tests/unit/test_no_blocking_rules_guard_repository.py -vv
+  - make validate
+
+files_expected:
+  - system/stale_artifact_repository.py
+  - system/hard_gate_repository.py
+  - tests/unit/test_stale_artifact_repository.py
+  - tests/unit/test_hard_gate_stale_artifacts.py
+  - .pfos/baby_steps/048_stale_artifact_hard_gate.yaml

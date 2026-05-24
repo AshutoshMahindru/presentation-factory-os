@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from system.outbox_repository import OutboxRepository
 from system.source_lifecycle_repository import SourceLifecycleRepository
+from system.stale_artifact_repository import StaleArtifactRepository
 
 
 @dataclass(frozen=True)
@@ -41,6 +42,7 @@ class HardGateRepository:
 
     The no_blocking_rules bundle currently evaluates:
     - no_failed_or_unprocessed_outbox_items through OutboxRepository
+    - no_stale_downstream_artifacts through StaleArtifactRepository
     - no_pending_retraction_cascade through SourceLifecycleRepository
 
     Remaining checks are explicit pass stubs until their repositories are implemented.
@@ -50,14 +52,16 @@ class HardGateRepository:
         self,
         outbox_repository: OutboxRepository | None = None,
         source_lifecycle_repository: SourceLifecycleRepository | None = None,
+        stale_artifact_repository: StaleArtifactRepository | None = None,
     ) -> None:
         self.outbox_repository = outbox_repository or OutboxRepository()
         self.source_lifecycle_repository = source_lifecycle_repository or SourceLifecycleRepository()
+        self.stale_artifact_repository = stale_artifact_repository or StaleArtifactRepository()
 
     def evaluate_no_blocking_rules(self, project_id: str) -> HardGateBundleResult:
         checks = (
             self._no_failed_or_unprocessed_outbox_items(project_id),
-            self._stub_pass("no_stale_downstream_artifacts"),
+            self._no_stale_downstream_artifacts(project_id),
             self._no_pending_retraction_cascade(project_id),
             self._stub_pass("no_blocking_rules_table_flags"),
         )
@@ -90,6 +94,31 @@ class HardGateRepository:
                 "unprocessed_count": status.unprocessed_count,
                 "failed_count": status.failed_count,
                 "oldest_unprocessed_age_seconds": status.oldest_unprocessed_age_seconds,
+            },
+        )
+
+    def _no_stale_downstream_artifacts(self, project_id: str) -> HardGateCheckResult:
+        status = self.stale_artifact_repository.get_project_stale_artifact_status(project_id)
+
+        if not status.blocked:
+            return HardGateCheckResult(
+                name="no_stale_downstream_artifacts",
+                passed=True,
+                metadata={
+                    "financial_cells_count": status.financial_cells_count,
+                    "design_tokens_count": status.design_tokens_count,
+                    "total_count": status.total_count,
+                },
+            )
+
+        return HardGateCheckResult(
+            name="no_stale_downstream_artifacts",
+            passed=False,
+            reason="project_has_stale_downstream_artifacts",
+            metadata={
+                "financial_cells_count": status.financial_cells_count,
+                "design_tokens_count": status.design_tokens_count,
+                "total_count": status.total_count,
             },
         )
 

@@ -3,6 +3,18 @@ from __future__ import annotations
 from system.hard_gate_repository import HardGateRepository
 from system.outbox_repository import OutboxStatus
 from system.source_lifecycle_repository import RetractionCascadeStatus
+from system.stale_artifact_repository import StaleArtifactStatus
+
+
+class FakeStaleArtifactRepository:
+    def get_project_stale_artifact_status(self, project_id: str) -> StaleArtifactStatus:
+        return StaleArtifactStatus(
+            project_id=project_id,
+            blocked=False,
+            financial_cells_count=0,
+            design_tokens_count=0,
+            total_count=0,
+        )
 
 
 class FakeSourceLifecycleRepository:
@@ -40,6 +52,7 @@ def test_hard_gate_repository_passes_when_outbox_clean() -> None:
     repository = HardGateRepository(
         outbox_repository=outbox_repository,
         source_lifecycle_repository=FakeSourceLifecycleRepository(),
+        stale_artifact_repository=FakeStaleArtifactRepository(),
     )
 
     result = repository.evaluate_no_blocking_rules("project-1")
@@ -69,6 +82,7 @@ def test_hard_gate_repository_blocks_when_outbox_blocked() -> None:
     repository = HardGateRepository(
         outbox_repository=outbox_repository,
         source_lifecycle_repository=FakeSourceLifecycleRepository(),
+        stale_artifact_repository=FakeStaleArtifactRepository(),
     )
 
     result = repository.evaluate_no_blocking_rules("project-2")
