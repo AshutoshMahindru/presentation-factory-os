@@ -1,0 +1,22 @@
+step_id: 35
+name: baby_step_executor_v1
+branch: baby-step-35-baby-step-executor-v1
+objective: >
+  Add a conservative local Baby Step Executor that can run focused validation,
+  full validation, show git status/diff, and optionally commit only after checks pass.
+
+commit_message: Add baby step executor v1
+
+focused_tests:
+  - tests/unit/test_approval_quorum_guard_postgres_backed.py
+  - tests/integration/test_approval_quorum_transition_postgres.py
+
+validation_commands:
+  - python -m compileall system api evidence_graph retrieval_engine financial_model agents tool_server jobs
+  - pytest tests/unit/test_approval_quorum_guard_postgres_backed.py -vv
+  - pytest tests/integration/test_approval_quorum_transition_postgres.py -vv
+  - make validate
+
+files_expected:
+  - scripts/baby_step_executor.py
+  - .pfos/baby_steps/035_baby_step_executor_v1.yaml
