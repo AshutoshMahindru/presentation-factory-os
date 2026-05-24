@@ -27,14 +27,23 @@ class OutboxRow:
     processed: bool
 
 
+@dataclass(frozen=True)
+class PendingOutboxRow:
+    outbox_id: str
+    project_id: str
+    target_store: str
+    operation_type: str
+    payload: dict[str, Any]
+    error_count: int
+
+
 class OutboxRepository:
     """
     Deterministic Postgres-backed outbox repository.
 
     A project is blocked when it has any unprocessed outbox rows or any
-    unprocessed rows with error_count > 0. This repository centralizes the
-    outbox blocking query so workflow transitions, health endpoints, and
-    export gates do not drift.
+    unprocessed rows with error_count > 0. The worker drains unprocessed rows
+    and records success/failure deterministically.
     """
 
     ALLOWED_TARGET_STORES = {"neo4j"}
@@ -94,6 +103,79 @@ class OutboxRepository:
             operation_type=parts[3],
             processed=parts[4].lower() in {"t", "true"},
         )
+
+    def list_unprocessed_rows(self, target_store: str = "neo4j", limit: int = 50) -> list[PendingOutboxRow]:
+        if target_store not in self.ALLOWED_TARGET_STORES:
+            raise ValueError(f"Unsupported target_store: {target_store}")
+
+        if limit <= 0 or limit > 50:
+            raise ValueError("limit must be between 1 and 50")
+
+        sql = f"""
+        SELECT
+          id,
+          project_id,
+          target_store,
+          operation_type,
+          payload::text,
+          error_count
+        FROM outbox
+        WHERE processed = FALSE
+          AND target_store = '{self._sql(target_store)}'
+        ORDER BY created_at ASC
+        LIMIT {int(limit)};
+        """
+
+        result = self._psql(sql)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr)
+
+        rows: list[PendingOutboxRow] = []
+        for line in result.stdout.splitlines():
+            if "|" not in line:
+                continue
+
+            parts = [part.strip() for part in line.split("|", 5)]
+            if len(parts) != 6:
+                raise RuntimeError(f"Unexpected outbox row result: {line!r}")
+
+            rows.append(
+                PendingOutboxRow(
+                    outbox_id=parts[0],
+                    project_id=parts[1],
+                    target_store=parts[2],
+                    operation_type=parts[3],
+                    payload=json.loads(parts[4]),
+                    error_count=self._parse_int(parts[5]),
+                )
+            )
+
+        return rows
+
+    def mark_processed(self, outbox_id: str) -> None:
+        sql = f"""
+        UPDATE outbox
+        SET processed = TRUE,
+            processed_at = now(),
+            last_error = NULL
+        WHERE id = '{self._sql(outbox_id)}';
+        """
+
+        result = self._psql(sql)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr)
+
+    def mark_failed(self, outbox_id: str, last_error: str) -> None:
+        sql = f"""
+        UPDATE outbox
+        SET error_count = error_count + 1,
+            last_error = '{self._sql(last_error)}'
+        WHERE id = '{self._sql(outbox_id)}';
+        """
+
+        result = self._psql(sql)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr)
 
     def get_project_outbox_status(self, project_id: str) -> OutboxStatus:
         sql = f"""

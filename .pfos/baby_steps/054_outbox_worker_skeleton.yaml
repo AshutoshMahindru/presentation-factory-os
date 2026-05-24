@@ -1,0 +1,19 @@
+step_id: 54
+name: outbox_worker_skeleton
+branch: baby-step-54-outbox-worker-skeleton
+objective: >
+  Add a deterministic outbox worker skeleton that claims unprocessed Neo4j outbox
+  rows, dispatches operation handlers, marks rows processed on success, and records
+  failures with error_count and last_error.
+commit_message: Add outbox worker skeleton
+validation_commands:
+  - python -m compileall system jobs api
+  - pytest tests/unit/test_outbox_repository.py -vv
+  - pytest tests/unit/test_outbox_worker.py -vv
+  - make validate
+files_expected:
+  - system/outbox_repository.py
+  - jobs/outbox_worker.py
+  - tests/unit/test_outbox_worker.py
+  - tests/unit/test_outbox_repository.py
+  - .pfos/baby_steps/054_outbox_worker_skeleton.yaml

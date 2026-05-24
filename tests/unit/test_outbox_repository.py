@@ -131,3 +131,96 @@ def test_outbox_repository_creates_outbox_row() -> None:
     assert "INSERT INTO outbox" in captured["sql"]
     assert "'source_retracted'" in captured["sql"]
     assert '"source_id": "source-1"' in captured["sql"]
+
+
+def test_outbox_repository_lists_unprocessed_rows() -> None:
+    from system.outbox_repository import OutboxRepository
+
+    repository = OutboxRepository()
+    captured: dict[str, str] = {}
+
+    class FakeResult:
+        returncode = 0
+        stdout = 'outbox-1|project-1|neo4j|source_retracted|{"source_id":"source-1"}|0\n'
+        stderr = ""
+
+    def fake_psql(sql: str) -> FakeResult:
+        captured["sql"] = sql
+        return FakeResult()
+
+    repository._psql = fake_psql  # type: ignore[method-assign]
+
+    rows = repository.list_unprocessed_rows(target_store="neo4j", limit=10)
+
+    assert len(rows) == 1
+    assert rows[0].outbox_id == "outbox-1"
+    assert rows[0].project_id == "project-1"
+    assert rows[0].target_store == "neo4j"
+    assert rows[0].operation_type == "source_retracted"
+    assert rows[0].payload == {"source_id": "source-1"}
+    assert rows[0].error_count == 0
+
+    assert "processed = FALSE" in captured["sql"]
+    assert "target_store = 'neo4j'" in captured["sql"]
+    assert "LIMIT 10" in captured["sql"]
+
+
+def test_outbox_repository_rejects_invalid_list_limit() -> None:
+    from system.outbox_repository import OutboxRepository
+
+    repository = OutboxRepository()
+
+    import pytest
+
+    with pytest.raises(ValueError, match="limit must be between 1 and 50"):
+        repository.list_unprocessed_rows(limit=99)
+
+
+def test_outbox_repository_marks_processed() -> None:
+    from system.outbox_repository import OutboxRepository
+
+    repository = OutboxRepository()
+    captured: dict[str, str] = {}
+
+    class FakeResult:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_psql(sql: str) -> FakeResult:
+        captured["sql"] = sql
+        return FakeResult()
+
+    repository._psql = fake_psql  # type: ignore[method-assign]
+
+    repository.mark_processed("outbox-1")
+
+    assert "UPDATE outbox" in captured["sql"]
+    assert "processed = TRUE" in captured["sql"]
+    assert "processed_at = now()" in captured["sql"]
+    assert "id = 'outbox-1'" in captured["sql"]
+
+
+def test_outbox_repository_marks_failed() -> None:
+    from system.outbox_repository import OutboxRepository
+
+    repository = OutboxRepository()
+    captured: dict[str, str] = {}
+
+    class FakeResult:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_psql(sql: str) -> FakeResult:
+        captured["sql"] = sql
+        return FakeResult()
+
+    repository._psql = fake_psql  # type: ignore[method-assign]
+
+    repository.mark_failed("outbox-1", "neo4j unavailable")
+
+    assert "UPDATE outbox" in captured["sql"]
+    assert "error_count = error_count + 1" in captured["sql"]
+    assert "last_error = 'neo4j unavailable'" in captured["sql"]
+    assert "id = 'outbox-1'" in captured["sql"]
