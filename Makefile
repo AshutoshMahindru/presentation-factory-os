@@ -1,19 +1,25 @@
 .PHONY: compile test no-agent-db-imports validate validate-json validate-yaml
 
+PYTHON ?= python3
+PYTEST ?= $(PYTHON) -m pytest
+PYTHON_SHIM_DIR ?= /tmp/pfos-python-shim
+
 compile:
-	python -m compileall system evidence_graph retrieval_engine financial_model agents tool_server jobs api
+	$(PYTHON) -m compileall system evidence_graph retrieval_engine financial_model agents tool_server jobs api
 
 test:
-	pytest
+	mkdir -p "$(PYTHON_SHIM_DIR)"
+	ln -sf "$$(command -v $(PYTHON))" "$(PYTHON_SHIM_DIR)/python"
+	PATH="$(PYTHON_SHIM_DIR):$$PATH" $(PYTEST)
 
 no-agent-db-imports:
-	python scripts/check_no_agent_db_imports.py
+	$(PYTHON) scripts/check_no_agent_db_imports.py
 
 validate-json:
-	python scripts/validate_json_schemas.py
+	$(PYTHON) scripts/validate_json_schemas.py
 
 validate-yaml:
-	python scripts/validate_yaml.py
+	$(PYTHON) scripts/validate_yaml.py
 
 validate: compile validate-json validate-yaml no-agent-db-imports test
 
