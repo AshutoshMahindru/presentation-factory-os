@@ -104,6 +104,21 @@ class ApprovalSubmissionRequest(BaseModel):
     notes: str | None = None
 
 
+
+class ApprovalStatusResponse(BaseModel):
+    project_id: str
+    phase: str
+    quorum_met: bool
+    decision_rule: str
+    required_count: int
+    approved_count: int
+    rejected_count: int
+    abstained_count: int
+    changes_requested_count: int
+    missing_roles: dict[str, int]
+    blocking_rejection: bool
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"service": "workflow-service", "status": "ok"}
@@ -137,6 +152,50 @@ def create_project(payload: CreateProjectRequest) -> CreateProjectResponse:
         project_id=project.project_id,
         phase=project.current_phase,
         audience_profile_valid=True,
+    )
+
+
+@app.get("/projects/{project_id}/approvals/status/{phase}", response_model=ApprovalStatusResponse)
+def get_approval_status(project_id: str, phase: str) -> ApprovalStatusResponse:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail={"error": "project_not_found"})
+
+    approvals = project_repository.list_approvals_for_phase(project_id, phase)
+    entries = [
+        ApprovalEntry(
+            actor_email=approval["actor_email"],
+            role=approval["role"],
+            decision=approval["decision"],
+        )
+        for approval in approvals
+    ]
+
+    try:
+        quorum_result = ApprovalQuorum.from_yaml().evaluate(phase, entries)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "approval_status_unavailable",
+                "project_id": project_id,
+                "phase": phase,
+                "message": str(exc),
+            },
+        ) from exc
+
+    return ApprovalStatusResponse(
+        project_id=project_id,
+        phase=phase,
+        quorum_met=quorum_result.quorum_met,
+        decision_rule=quorum_result.decision_rule,
+        required_count=quorum_result.required_count,
+        approved_count=quorum_result.approved_count,
+        rejected_count=quorum_result.rejected_count,
+        abstained_count=quorum_result.abstained_count,
+        changes_requested_count=quorum_result.changes_requested_count,
+        missing_roles=quorum_result.missing_roles,
+        blocking_rejection=quorum_result.blocking_rejection,
     )
 
 
