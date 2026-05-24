@@ -1,0 +1,21 @@
+step_id: 79
+name: project_dashboard_ui
+branch: codex/step-79-project-dashboard-ui
+objective: >
+  Add a read-only project dashboard UI component backed by the Step 78 typed
+  API client contracts for outbox, source retraction, hard-gate, and approval
+  status without changing API, Docker, jobs, source lifecycle, outbox worker, or
+  deck/export behavior.
+constraints:
+  - Keep baby-step YAML metadata-only.
+  - Do not modify API behavior.
+  - Do not modify Docker, jobs, source lifecycle, outbox worker, or deck/export behavior.
+  - Do not add export readiness UI before an export readiness endpoint exists.
+commit_message: Add project dashboard UI
+validation_commands:
+  - python3 -m compileall api system
+  - make validate
+files_expected:
+  - ui/components/ProjectHealth.tsx
+  - docs/34_UI_Operator_Experience_Plan.md
+  - .pfos/baby_steps/079_project_dashboard_ui.yaml

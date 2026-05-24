@@ -40,8 +40,10 @@ readiness contract before the deck/export API surface exists.
 
 ## Follow-On UI Steps
 
-- Step 79 can build the project dashboard from `getProjectControlPlaneHealth`
-  plus future project metadata once an implemented project read endpoint exists.
+- Step 79 adds a presentational project dashboard component backed by
+  `getProjectControlPlaneHealth` types. It surfaces outbox queue state, source
+  retraction queue state, hard-gate status, and an optional approval snapshot
+  without adding API behavior.
 - Step 80 can build approval UI from `getApprovalStatus` and later add approval
   submission helpers in a separate baby step.
 - Step 81 can use outbox, source-retraction, and hard-gate helper types for
