@@ -1,0 +1,21 @@
+step_id: 76
+name: financial_assertion_export_gate
+branch: codex/step-76-financial-assertion-export-gate
+objective: >
+  Enforce that numeric slide assertions require financial refs and that each
+  financial ref maps to a validated financial cell before export.
+constraints:
+  - Do not weaken export gates.
+  - Keep baby-step YAML metadata-only.
+  - Do not modify Docker, Makefile, jobs, API, or outbox worker.
+commit_message: Enforce financial assertion export gate
+validation_commands:
+  - python3 -m compileall deck_builder financial_model
+  - python3 -m pytest tests/unit/test_export_gate.py -vv
+  - python3 -m pytest tests/unit/test_numeric_assertions_require_financial_refs.py -vv
+  - python3 -m pytest tests/unit/test_slide_schema.py -vv
+  - make validate
+files_expected:
+  - deck_builder/export_gate.py
+  - tests/unit/test_export_gate.py
+  - .pfos/baby_steps/076_financial_assertion_export_gate.yaml

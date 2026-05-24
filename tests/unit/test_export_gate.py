@@ -23,6 +23,7 @@ def valid_deck():
         "slides": [valid_slide()],
         "financial_validation_status": "validated",
         "unsupported_financial_claim_count": 0,
+        "financial_cells": {},
         "sensitive_data_detected": False,
         "pii_exposure_detected": False,
         "artifacts": [],
@@ -86,6 +87,60 @@ def test_unsupported_financial_claims_block_export():
 
     assert result.export_allowed is False
     assert any("Unsupported financial claims" in reason for reason in result.blocking_reasons)
+
+
+def test_numeric_assertion_without_financial_refs_blocks_export():
+    deck = valid_deck()
+    deck["slides"][0]["content"]["body"] = "Contribution margin improves to 38% by month 18."
+
+    result = ExportGate().evaluate(deck)
+
+    assert result.export_allowed is False
+    assert any("numeric assertions" in reason for reason in result.blocking_reasons)
+
+
+def test_financial_ref_missing_financial_cell_blocks_export():
+    deck = valid_deck()
+    deck["slides"][0]["content"]["body"] = "Contribution margin improves to 38% by month 18."
+    deck["slides"][0]["content"]["financial_refs"] = ["FM!CM_M18_BASE"]
+
+    result = ExportGate().evaluate(deck)
+
+    assert result.export_allowed is False
+    assert any("does not map to a financial cell" in reason for reason in result.blocking_reasons)
+
+
+def test_financial_ref_must_map_to_validated_financial_cell():
+    deck = valid_deck()
+    deck["slides"][0]["content"]["body"] = "Contribution margin improves to 38% by month 18."
+    deck["slides"][0]["content"]["financial_refs"] = ["FM!CM_M18_BASE"]
+    deck["financial_cells"] = {
+        "FM!CM_M18_BASE": {
+            "cell_ref": "FM!CM_M18_BASE",
+            "validation_status": "failed",
+        }
+    }
+
+    result = ExportGate().evaluate(deck)
+
+    assert result.export_allowed is False
+    assert any("is not validated" in reason for reason in result.blocking_reasons)
+
+
+def test_validated_financial_ref_allows_financial_assertion():
+    deck = valid_deck()
+    deck["slides"][0]["content"]["body"] = "Contribution margin improves to 38% by month 18."
+    deck["slides"][0]["content"]["financial_refs"] = ["FM!CM_M18_BASE"]
+    deck["financial_cells"] = {
+        "FM!CM_M18_BASE": {
+            "cell_ref": "FM!CM_M18_BASE",
+            "validation_status": "validated",
+        }
+    }
+
+    result = ExportGate().evaluate(deck)
+
+    assert result.export_allowed is True
 
 
 def test_missing_source_attribution_blocks_material_slide():

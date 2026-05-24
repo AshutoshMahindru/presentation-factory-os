@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from financial_model.slide_numeric_assertion_checker import SlideNumericAssertionChecker
+
 
 class ExportGateError(Exception):
     """Raised when a deck cannot be exported."""
@@ -29,7 +31,7 @@ class ExportGate:
         slides = deck.get("slides", []) or []
 
         self._check_degraded_visuals(slides, blocking, warnings)
-        self._check_financial_validation(deck, blocking)
+        self._check_financial_validation(deck, slides, blocking)
         self._check_source_attribution(slides, blocking)
         self._check_sensitive_data(deck, blocking)
         self._check_stale_artifacts(deck, blocking)
@@ -64,13 +66,37 @@ class ExportGate:
             if visual_quality == "degraded" and materiality == "low":
                 warnings.append(f"{slide_id}: degraded visual allowed only with warning and provenance.")
 
-    def _check_financial_validation(self, deck: dict[str, Any], blocking: list[str]) -> None:
+    def _check_financial_validation(
+        self,
+        deck: dict[str, Any],
+        slides: list[dict[str, Any]],
+        blocking: list[str],
+    ) -> None:
         if deck.get("financial_validation_status") not in {None, "validated"}:
             blocking.append("Financial calculations must pass deterministic validation.")
 
         unsupported_claims = int(deck.get("unsupported_financial_claim_count", 0) or 0)
         if unsupported_claims > 0:
             blocking.append("Unsupported financial claims cannot be exported.")
+
+        checker = SlideNumericAssertionChecker()
+        financial_cells = self._financial_cell_lookup(deck)
+        for slide in slides:
+            slide_id = slide.get("slide_id", "<unknown>")
+            assertion_result = checker.check_slide(slide)
+
+            for error in assertion_result.errors:
+                blocking.append(f"{slide_id}: {error}")
+
+            for financial_ref in assertion_result.financial_refs:
+                cell = financial_cells.get(financial_ref)
+                if not cell:
+                    blocking.append(f"{slide_id}: financial_ref {financial_ref} does not map to a financial cell.")
+                    continue
+
+                status = cell.get("validation_status", cell.get("status"))
+                if status != "validated":
+                    blocking.append(f"{slide_id}: financial_ref {financial_ref} is not validated.")
 
     def _check_source_attribution(self, slides: list[dict[str, Any]], blocking: list[str]) -> None:
         for slide in slides:
@@ -99,3 +125,15 @@ class ExportGate:
     def _check_outbox(self, deck: dict[str, Any], blocking: list[str]) -> None:
         if int(deck.get("unprocessed_outbox_count", 0) or 0) > 0:
             blocking.append("Cross-store side effects must be drained before export.")
+
+    def _financial_cell_lookup(self, deck: dict[str, Any]) -> dict[str, dict[str, Any]]:
+        cells = deck.get("financial_cells", {}) or {}
+        if isinstance(cells, dict):
+            return cells
+
+        lookup: dict[str, dict[str, Any]] = {}
+        for cell in cells:
+            cell_ref = cell.get("cell_ref")
+            if cell_ref:
+                lookup[str(cell_ref)] = cell
+        return lookup
