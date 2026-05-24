@@ -152,8 +152,17 @@ class OutboxWorker:
             "source_retracted": Neo4jSourceRetractionHandler(),
         }
 
-    def run_once(self, target_store: str = "neo4j", limit: int = 50) -> OutboxWorkerResult:
-        rows = self.outbox_repository.list_unprocessed_rows(target_store=target_store, limit=limit)
+    def run_once(
+        self,
+        target_store: str = "neo4j",
+        limit: int = 50,
+        project_id: str | None = None,
+    ) -> OutboxWorkerResult:
+        rows = self.outbox_repository.list_unprocessed_rows(
+            target_store=target_store,
+            limit=limit,
+            project_id=project_id,
+        )
 
         scanned_count = len(rows)
         processed_count = 0
@@ -177,6 +186,7 @@ class OutboxWorker:
             processed_count=processed_count,
             failed_count=failed_count,
         )
+
 
     def _process_row(self, row: PendingOutboxRow) -> None:
         handler = self.handlers.get(row.operation_type)

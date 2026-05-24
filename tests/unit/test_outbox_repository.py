@@ -266,3 +266,59 @@ def test_outbox_repository_mark_failed_caps_error_count() -> None:
     repository.mark_failed("outbox-1", "failure")
 
     assert "LEAST(error_count + 1, 5)" in captured["sql"]
+
+
+def test_outbox_repository_lists_project_rows() -> None:
+    from system.outbox_repository import OutboxRepository
+
+    repository = OutboxRepository()
+    captured: dict[str, str] = {}
+
+    class FakeResult:
+        returncode = 0
+        stdout = 'outbox-1|project-1|neo4j|source_retracted|{"source_id":"source-1"}|0\n'
+        stderr = ""
+
+    def fake_psql(sql: str) -> FakeResult:
+        captured["sql"] = sql
+        return FakeResult()
+
+    repository._psql = fake_psql  # type: ignore[method-assign]
+
+    rows = repository.list_project_rows("project-1")
+
+    assert len(rows) == 1
+    assert rows[0].project_id == "project-1"
+    assert rows[0].operation_type == "source_retracted"
+    assert rows[0].payload == {"source_id": "source-1"}
+
+    assert "FROM outbox" in captured["sql"]
+    assert "WHERE project_id = 'project-1'" in captured["sql"]
+
+
+def test_outbox_repository_lists_unprocessed_rows_with_project_scope() -> None:
+    from system.outbox_repository import OutboxRepository
+
+    repository = OutboxRepository()
+    captured: dict[str, str] = {}
+
+    class FakeResult:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_psql(sql: str) -> FakeResult:
+        captured["sql"] = sql
+        return FakeResult()
+
+    repository._psql = fake_psql  # type: ignore[method-assign]
+
+    repository.list_unprocessed_rows(
+        target_store="neo4j",
+        limit=10,
+        project_id="project-1",
+    )
+
+    assert "target_store = 'neo4j'" in captured["sql"]
+    assert "project_id = 'project-1'" in captured["sql"]
+    assert "error_count < 5" in captured["sql"]

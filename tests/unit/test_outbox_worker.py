@@ -11,8 +11,13 @@ class FakeOutboxRepository:
         self.processed: list[str] = []
         self.failed: list[dict[str, str]] = []
 
-    def list_unprocessed_rows(self, target_store: str = "neo4j", limit: int = 50) -> list[PendingOutboxRow]:
-        self.list_calls.append({"target_store": target_store, "limit": limit})
+    def list_unprocessed_rows(
+        self,
+        target_store: str = "neo4j",
+        limit: int = 50,
+        project_id: str | None = None,
+    ) -> list[PendingOutboxRow]:
+        self.list_calls.append({"target_store": target_store, "limit": limit, "project_id": project_id})
         return self.rows
 
     def mark_processed(self, outbox_id: str) -> None:
@@ -42,7 +47,7 @@ def test_outbox_worker_no_rows() -> None:
     assert result.scanned_count == 0
     assert result.processed_count == 0
     assert result.failed_count == 0
-    assert repository.list_calls == [{"target_store": "neo4j", "limit": 10}]
+    assert repository.list_calls == [{"target_store": "neo4j", "limit": 10, "project_id": None}]
     assert repository.processed == []
     assert repository.failed == []
 

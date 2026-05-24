@@ -1,0 +1,20 @@
+step_id: 56
+name: source_retraction_e2e_regression
+branch: baby-step-56-source-retraction-e2e-regression
+objective: >
+  Add an end-to-end regression test proving that a source retraction lifecycle event
+  is picked up by the source retraction job, converted into Neo4j outbox work,
+  drained by the outbox worker, and no longer blocks hard-gate status after the
+  lifecycle event is processed.
+commit_message: Add source retraction end-to-end regression
+validation_commands:
+  - python -m compileall system jobs api
+  - pytest tests/integration/test_source_retraction_e2e_regression.py -vv
+  - pytest tests/unit/test_source_retraction_job.py -vv
+  - pytest tests/unit/test_outbox_worker.py -vv
+  - make validate
+files_expected:
+  - system/source_lifecycle_event_repository.py
+  - system/outbox_repository.py
+  - tests/integration/test_source_retraction_e2e_regression.py
+  - .pfos/baby_steps/056_source_retraction_e2e_regression.yaml

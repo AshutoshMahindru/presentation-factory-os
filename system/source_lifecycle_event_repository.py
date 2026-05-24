@@ -92,6 +92,22 @@ class SourceLifecycleEventRepository:
 
         return self._parse_event_result(result.stdout)
 
+    def get_event(self, event_id: str) -> SourceLifecycleEvent:
+        sql = f"""
+        SELECT id, project_id, source_id, event_type, processing_status
+        FROM source_lifecycle_events
+        WHERE id = '{self._sql(event_id)}';
+        """
+
+        result = self._psql(sql)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr)
+
+        if not result.stdout.strip():
+            raise LookupError(f"Source lifecycle event not found: {event_id}")
+
+        return self._parse_event_result(result.stdout)
+
     def list_pending_retraction_events(self, limit: int = 50) -> list[SourceLifecycleEvent]:
         if limit <= 0 or limit > 50:
             raise ValueError("limit must be between 1 and 50")

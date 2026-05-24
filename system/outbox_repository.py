@@ -104,12 +104,61 @@ class OutboxRepository:
             processed=parts[4].lower() in {"t", "true"},
         )
 
-    def list_unprocessed_rows(self, target_store: str = "neo4j", limit: int = 50) -> list[PendingOutboxRow]:
+    def list_project_rows(self, project_id: str) -> list[PendingOutboxRow]:
+        sql = f"""
+        SELECT
+          id,
+          project_id,
+          target_store,
+          operation_type,
+          payload::text,
+          error_count
+        FROM outbox
+        WHERE project_id = '{self._sql(project_id)}'
+        ORDER BY created_at ASC;
+        """
+
+        result = self._psql(sql)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr)
+
+        rows: list[PendingOutboxRow] = []
+        for line in result.stdout.splitlines():
+            if "|" not in line:
+                continue
+
+            parts = [part.strip() for part in line.split("|", 5)]
+            if len(parts) != 6:
+                raise RuntimeError(f"Unexpected outbox row result: {line!r}")
+
+            rows.append(
+                PendingOutboxRow(
+                    outbox_id=parts[0],
+                    project_id=parts[1],
+                    target_store=parts[2],
+                    operation_type=parts[3],
+                    payload=json.loads(parts[4]),
+                    error_count=self._parse_int(parts[5]),
+                )
+            )
+
+        return rows
+
+    def list_unprocessed_rows(
+        self,
+        target_store: str = "neo4j",
+        limit: int = 50,
+        project_id: str | None = None,
+    ) -> list[PendingOutboxRow]:
         if target_store not in self.ALLOWED_TARGET_STORES:
             raise ValueError(f"Unsupported target_store: {target_store}")
 
         if limit <= 0 or limit > 50:
             raise ValueError("limit must be between 1 and 50")
+
+        project_filter = ""
+        if project_id is not None:
+            project_filter = f"AND project_id = '{self._sql(project_id)}'"
 
         sql = f"""
         SELECT
@@ -123,6 +172,7 @@ class OutboxRepository:
         WHERE processed = FALSE
           AND target_store = '{self._sql(target_store)}'
           AND error_count < 5
+          {project_filter}
         ORDER BY created_at ASC
         LIMIT {int(limit)};
         """

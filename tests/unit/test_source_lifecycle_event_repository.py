@@ -154,3 +154,32 @@ def test_source_lifecycle_event_repository_rejects_invalid_status_update() -> No
             event_id="event-1",
             processing_status="not_real",
         )
+
+
+def test_source_lifecycle_event_repository_get_event() -> None:
+    repository = SourceLifecycleEventRepository()
+    captured: dict[str, str] = {}
+
+    def fake_psql(sql: str) -> FakeResult:
+        captured["sql"] = sql
+        return FakeResult("event-1|project-1|source-1|retracted|processed\n")
+
+    repository._psql = fake_psql  # type: ignore[method-assign]
+
+    event = repository.get_event("event-1")
+
+    assert event.event_id == "event-1"
+    assert event.processing_status == "processed"
+    assert "WHERE id = 'event-1'" in captured["sql"]
+
+
+def test_source_lifecycle_event_repository_get_event_raises_when_missing() -> None:
+    repository = SourceLifecycleEventRepository()
+
+    def fake_psql(sql: str) -> FakeResult:
+        return FakeResult("")
+
+    repository._psql = fake_psql  # type: ignore[method-assign]
+
+    with pytest.raises(LookupError, match="Source lifecycle event not found"):
+        repository.get_event("missing-event")
