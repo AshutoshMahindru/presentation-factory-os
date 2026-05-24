@@ -122,6 +122,7 @@ class OutboxRepository:
         FROM outbox
         WHERE processed = FALSE
           AND target_store = '{self._sql(target_store)}'
+          AND error_count < 5
         ORDER BY created_at ASC
         LIMIT {int(limit)};
         """
@@ -168,7 +169,8 @@ class OutboxRepository:
     def mark_failed(self, outbox_id: str, last_error: str) -> None:
         sql = f"""
         UPDATE outbox
-        SET error_count = error_count + 1,
+        SET processed = FALSE,
+            error_count = LEAST(error_count + 1, 5),
             last_error = '{self._sql(last_error)}'
         WHERE id = '{self._sql(outbox_id)}';
         """

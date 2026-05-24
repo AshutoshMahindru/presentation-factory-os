@@ -110,3 +110,52 @@ def test_outbox_worker_marks_failed_when_handler_raises() -> None:
             "last_error": "neo4j unavailable",
         }
     ]
+
+
+def test_neo4j_project_handler_uses_id_property_and_payload_fields(monkeypatch) -> None:
+    import jobs.outbox_worker as outbox_worker
+    from jobs.outbox_worker import Neo4jProjectNodeHandler
+
+    commands: list[list[str]] = []
+
+    class FakeResult:
+        returncode = 0
+        stdout = "neo4j/pfos_neo4j_password\n"
+        stderr = ""
+
+    def fake_run(command, text, stdout, stderr, check):
+        commands.append(command)
+        if "printenv" in command:
+            return FakeResult()
+
+        class CypherResult:
+            returncode = 0
+            stdout = "id\nproject-1\n"
+            stderr = ""
+
+        return CypherResult()
+
+    monkeypatch.setattr(outbox_worker.subprocess, "run", fake_run)
+
+    row = PendingOutboxRow(
+        outbox_id="outbox-1",
+        project_id="project-1",
+        target_store="neo4j",
+        operation_type="phase_transition_side_effect",
+        payload={
+            "project_id": "project-1",
+            "name": "Demo Project",
+            "current_phase": "strategy",
+        },
+        error_count=0,
+    )
+
+    Neo4jProjectNodeHandler()(row)
+
+    cypher_command = commands[-1]
+    cypher = cypher_command[-1]
+
+    assert "MERGE (p:Project {id: 'project-1'})" in cypher
+    assert "p.name = 'Demo Project'" in cypher
+    assert "p.current_phase = 'strategy'" in cypher
+    assert "project_id:" not in cypher

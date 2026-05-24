@@ -221,6 +221,48 @@ def test_outbox_repository_marks_failed() -> None:
     repository.mark_failed("outbox-1", "neo4j unavailable")
 
     assert "UPDATE outbox" in captured["sql"]
-    assert "error_count = error_count + 1" in captured["sql"]
+    assert "error_count = LEAST(error_count + 1, 5)" in captured["sql"]
     assert "last_error = 'neo4j unavailable'" in captured["sql"]
     assert "id = 'outbox-1'" in captured["sql"]
+
+
+def test_outbox_repository_skips_rows_at_retry_ceiling() -> None:
+    from system.outbox_repository import OutboxRepository
+
+    repository = OutboxRepository()
+    captured: dict[str, str] = {}
+
+    class FakeResult:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_psql(sql: str) -> FakeResult:
+        captured["sql"] = sql
+        return FakeResult()
+
+    repository._psql = fake_psql  # type: ignore[method-assign]
+    repository.list_unprocessed_rows(target_store="neo4j", limit=10)
+
+    assert "error_count < 5" in captured["sql"]
+
+
+def test_outbox_repository_mark_failed_caps_error_count() -> None:
+    from system.outbox_repository import OutboxRepository
+
+    repository = OutboxRepository()
+    captured: dict[str, str] = {}
+
+    class FakeResult:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_psql(sql: str) -> FakeResult:
+        captured["sql"] = sql
+        return FakeResult()
+
+    repository._psql = fake_psql  # type: ignore[method-assign]
+    repository.mark_failed("outbox-1", "failure")
+
+    assert "LEAST(error_count + 1, 5)" in captured["sql"]
