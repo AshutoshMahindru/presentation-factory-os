@@ -30,18 +30,17 @@ class BabyStepApplier:
         self._print_header()
         self._confirm_branch()
         self._apply_files()
+        self._run_command_blocks()
 
         for command in self.plan.get("validation_commands", []):
-            result = self._run_command(command)
+            result = self._run_shell(command, label="VALIDATE")
             if result.returncode != 0:
-                print("\nFAIL: validation stopped.")
-                print(f"Failed command: {result.command}")
-                print("No commit was created.")
+                self._print_failure(result)
                 return result.returncode
 
         self._verify_expected_files()
-        self._run_command("git status --short")
-        self._run_command("git diff --stat")
+        self._run_shell("git status --short", label="STATUS")
+        self._run_shell("git diff --stat", label="DIFF")
 
         if self.commit:
             self._commit_if_changes_exist()
@@ -124,6 +123,37 @@ class BabyStepApplier:
 
             print(f"WROTE: {path}")
 
+    def _run_command_blocks(self) -> None:
+        commands = self.plan.get("commands", [])
+
+        if commands is None:
+            return
+
+        if not isinstance(commands, list):
+            raise BabyStepApplierError("commands must be a list.")
+
+        for command_spec in commands:
+            if isinstance(command_spec, str):
+                name = command_spec
+                run = command_spec
+            elif isinstance(command_spec, dict):
+                name = command_spec.get("name", "unnamed command")
+                run = command_spec.get("run")
+            else:
+                raise BabyStepApplierError("Each command entry must be a string or object.")
+
+            if not isinstance(name, str) or not name.strip():
+                raise BabyStepApplierError("Command name must be a non-empty string.")
+
+            if not isinstance(run, str) or not run.strip():
+                raise BabyStepApplierError(f"Command {name} requires non-empty run content.")
+
+            result = self._run_shell(run, label=f"COMMAND: {name}")
+            if result.returncode != 0:
+                raise BabyStepApplierError(
+                    f"Command block failed: {name} with exit code {result.returncode}"
+                )
+
     def _verify_expected_files(self) -> None:
         files_expected = self.plan.get("files_expected", [])
 
@@ -137,9 +167,11 @@ class BabyStepApplier:
         if missing:
             raise BabyStepApplierError(f"Expected files missing: {missing}")
 
-    def _run_command(self, command: str) -> CommandResult:
+    def _run_shell(self, command: str, label: str) -> CommandResult:
         print("\n" + "-" * 80)
-        print(f"RUN: {command}")
+        print(label)
+        print("-" * 80)
+        print(command)
         print("-" * 80)
 
         result = subprocess.run(
@@ -151,6 +183,12 @@ class BabyStepApplier:
 
         print(f"EXIT CODE: {result.returncode}")
         return CommandResult(command=command, returncode=result.returncode)
+
+    def _print_failure(self, result: CommandResult) -> None:
+        print("\nFAIL: validation stopped.")
+        print(f"Failed command: {result.command}")
+        print(f"Exit code: {result.returncode}")
+        print("No commit was created.")
 
     def _commit_if_changes_exist(self) -> None:
         status = subprocess.run(

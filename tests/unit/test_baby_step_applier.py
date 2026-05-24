@@ -76,3 +76,83 @@ def test_verify_expected_files_passes_after_file_apply(tmp_path: Path) -> None:
 
     applier._apply_files()
     applier._verify_expected_files()
+
+
+def test_run_command_blocks_accepts_string_commands(tmp_path: Path) -> None:
+    marker = tmp_path / "string_command_marker.txt"
+    plan_path = write_plan(
+        tmp_path,
+        {
+            "commands": [
+                f"printf 'string command worked' > {marker}",
+            ]
+        },
+    )
+    applier = BabyStepApplier(plan_path)
+
+    applier._run_command_blocks()
+
+    assert marker.read_text() == "string command worked"
+
+
+def test_run_command_blocks_accepts_named_command_objects(tmp_path: Path) -> None:
+    marker = tmp_path / "named_command_marker.txt"
+    plan_path = write_plan(
+        tmp_path,
+        {
+            "commands": [
+                {
+                    "name": "write marker",
+                    "run": f"printf 'named command worked' > {marker}",
+                }
+            ]
+        },
+    )
+    applier = BabyStepApplier(plan_path)
+
+    applier._run_command_blocks()
+
+    assert marker.read_text() == "named command worked"
+
+
+def test_run_command_blocks_rejects_invalid_commands_shape(tmp_path: Path) -> None:
+    plan_path = write_plan(tmp_path, {"commands": {"bad": "shape"}})
+    applier = BabyStepApplier(plan_path)
+
+    with pytest.raises(BabyStepApplierError, match="commands must be a list"):
+        applier._run_command_blocks()
+
+
+def test_run_command_blocks_rejects_missing_run_content(tmp_path: Path) -> None:
+    plan_path = write_plan(
+        tmp_path,
+        {
+            "commands": [
+                {
+                    "name": "missing run",
+                }
+            ]
+        },
+    )
+    applier = BabyStepApplier(plan_path)
+
+    with pytest.raises(BabyStepApplierError, match="requires non-empty run content"):
+        applier._run_command_blocks()
+
+
+def test_run_command_blocks_raises_when_command_fails(tmp_path: Path) -> None:
+    plan_path = write_plan(
+        tmp_path,
+        {
+            "commands": [
+                {
+                    "name": "intentional failure",
+                    "run": "exit 7",
+                }
+            ]
+        },
+    )
+    applier = BabyStepApplier(plan_path)
+
+    with pytest.raises(BabyStepApplierError, match="Command block failed"):
+        applier._run_command_blocks()

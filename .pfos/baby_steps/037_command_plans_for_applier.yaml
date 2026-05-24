@@ -1,0 +1,18 @@
+step_id: 37
+name: command_plans_for_applier
+branch: baby-step-37-command-plans-for-applier
+objective: >
+  Add command-block support to Baby Step Applier so future YAML plans can execute
+  shell commands before validation.
+
+commit_message: Add command plan support to baby step applier
+
+validation_commands:
+  - python -m compileall scripts
+  - pytest tests/unit/test_baby_step_applier.py -vv
+  - make validate
+
+files_expected:
+  - scripts/baby_step_applier.py
+  - tests/unit/test_baby_step_applier.py
+  - .pfos/baby_steps/037_command_plans_for_applier.yaml
