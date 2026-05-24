@@ -1,0 +1,13 @@
+step_id: 49
+name: stabilize_execution_protocol
+branch: baby-step-49-stabilize-execution-protocol
+objective: >
+  Document the stable baby-step execution protocol and restrict YAML usage to
+  metadata/validation plans rather than fragile multiline code patching.
+commit_message: Stabilize baby step execution protocol
+validation_commands:
+  - python -m compileall system api scripts
+  - make validate
+files_expected:
+  - docs/25_Baby_Step_Execution_Protocol.md
+  - .pfos/baby_steps/049_stabilize_execution_protocol.yaml
