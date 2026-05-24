@@ -40,7 +40,7 @@ Content-Type: application/vnd.pfos.v3.2.4+json
         "concern": "return on invested capital"
       },
       {
-        "role": "technical_reviewer",
+        "role": "technical_evaluator",
         "concern": "operational scalability"
       }
     ]
@@ -64,8 +64,7 @@ Content-Type: application/vnd.pfos.v3.2.4+json
 {
   "project_id": "7d8d6e74-7e0c-4e6b-9e68-7d4e4a8406d5",
   "phase": "created",
-  "audience_profile_valid": true,
-  "created_at": "2026-05-24T04:30:00Z"
+  "audience_profile_valid": true
 }
 ```
 
@@ -99,6 +98,10 @@ Content-Type: application/vnd.pfos.v3.2.4+json
   "requested_by": "analyst@example.com",
   "reason": "Brief, audience profile, and decision definition are complete.",
   "guard_context": {
+    "guards": {
+      "rubric_above_3_5": true,
+      "thesis_audience_aligned": true
+    },
     "rubric_score_id": "3ebec5e5-ec8e-45c0-ae80-ff4b02bfaa87",
     "approval_snapshot_id": "b4ea8e85-b2cc-47e7-9860-f5b85e64ea71"
   }
@@ -119,8 +122,7 @@ Content-Type: application/vnd.pfos.v3.2.4+json
     {"name": "thesis_audience_aligned", "status": "pass"},
     {"name": "audience_psychology_adequate", "status": "pass"},
     {"name": "no_blocking_rules", "status": "pass"}
-  ],
-  "created_at": "2026-05-24T04:35:00Z"
+  ]
 }
 ```
 
@@ -175,18 +177,44 @@ Content-Type: application/vnd.pfos.v3.2.4+json
 
 ```json
 {
-  "approval_id": "54ebd6d8-783a-4ad1-aa2a-972bdad0ef98",
   "project_id": "7d8d6e74-7e0c-4e6b-9e68-7d4e4a8406d5",
   "phase": "review",
-  "decision": "approved",
-  "quorum_status": {
-    "required_count": 2,
-    "current_count": 2,
-    "decision_rule": "unanimous",
-    "minimum_roles": {"ic_member": 1},
-    "met": true
-  },
-  "created_at": "2026-05-24T05:10:00Z"
+  "approval_recorded": true,
+  "quorum_met": false,
+  "approved_count": 1,
+  "rejected_count": 0,
+  "changes_requested_count": 0,
+  "missing_roles": {},
+  "blocking_rejection": false
+}
+```
+
+## 4. Get approval status
+
+### Endpoint
+
+```http
+GET /projects/{project_id}/approvals/status/{phase}
+Accept: application/vnd.pfos.v3.2.4+json
+```
+
+### Successful response
+
+```json
+{
+  "project_id": "7d8d6e74-7e0c-4e6b-9e68-7d4e4a8406d5",
+  "phase": "review",
+  "quorum_met": true,
+  "decision_rule": "unanimous",
+  "required_count": 2,
+  "approved_count": 2,
+  "rejected_count": 0,
+  "abstained_count": 0,
+  "changes_requested_count": 0,
+  "missing_roles": {},
+  "blocking_rejection": false,
+  "escalation_status": "none",
+  "escalation_reason": null
 }
 ```
 
