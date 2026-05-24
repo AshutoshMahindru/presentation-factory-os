@@ -111,6 +111,116 @@ class ProjectRepository:
     def list_approvals_for_phase(self, project_id: str, phase: str) -> list[dict[str, Any]]:
         return approval_ledger_repository.list_approval_dicts_for_phase(project_id, phase)
 
+    def get_observability_metrics_snapshot(self) -> dict[str, Any]:
+        sql = """
+        SELECT jsonb_build_object(
+          'project_count', (SELECT count(*) FROM projects),
+          'phase_transition_count', (SELECT count(*) FROM phase_transitions),
+          'approval_count', (SELECT count(*) FROM approval_ledger),
+          'open_outbox_count', (SELECT count(*) FROM outbox WHERE processed = FALSE),
+          'failed_outbox_count', (SELECT count(*) FROM outbox WHERE processed = FALSE AND error_count > 0),
+          'open_source_retraction_count', (
+            SELECT count(*)
+            FROM source_lifecycle_events
+            WHERE event_type = 'retracted'
+              AND processing_status IN ('pending', 'processing', 'failed', 'blocked')
+          ),
+          'retrieval_routing_log_count', (SELECT count(*) FROM retrieval_routing_log),
+          'rubric_score_count', (SELECT count(*) FROM rubric_scores)
+        )::text;
+        """
+        result = self._psql(sql)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr)
+        return self._parse_json_result(result.stdout)
+
+    def list_phase_traces(self, project_id: str) -> list[dict[str, Any]]:
+        sql = f"""
+        SELECT COALESCE(
+          jsonb_agg(
+            jsonb_build_object(
+              'trace_id', trace_id::text,
+              'phase', phase::text,
+              'span_name', span_name,
+              'service_name', service_name,
+              'started_at', to_char(started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+              'ended_at', CASE
+                WHEN ended_at IS NULL THEN NULL
+                ELSE to_char(ended_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+              END,
+              'duration_ms', duration_ms,
+              'status', status,
+              'metadata', metadata
+            )
+            ORDER BY started_at DESC, id DESC
+          ),
+          '[]'::jsonb
+        )::text
+        FROM phase_traces
+        WHERE project_id = '{self._sql(project_id)}';
+        """
+        result = self._psql(sql)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr)
+        return list(self._parse_json_result(result.stdout))
+
+    def list_retrieval_routing_logs(self, project_id: str) -> list[dict[str, Any]]:
+        sql = f"""
+        SELECT COALESCE(
+          jsonb_agg(
+            jsonb_build_object(
+              'request_id', request_id::text,
+              'query', query,
+              'query_classification', query_classification,
+              'mode', mode::text,
+              'forced_hybrid', forced_hybrid,
+              'escalation_reason', escalation_reason,
+              'confidence', confidence::float,
+              'item_count', item_count,
+              'gaps', gaps,
+              'created_at', to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+            )
+            ORDER BY created_at DESC, id DESC
+          ),
+          '[]'::jsonb
+        )::text
+        FROM retrieval_routing_log
+        WHERE project_id = '{self._sql(project_id)}';
+        """
+        result = self._psql(sql)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr)
+        return list(self._parse_json_result(result.stdout))
+
+    def list_rubric_scores(self, project_id: str, phase: str) -> list[dict[str, Any]]:
+        sql = f"""
+        SELECT COALESCE(
+          jsonb_agg(
+            jsonb_build_object(
+              'dimension', dimension,
+              'score_version', score_version,
+              'score', score::float,
+              'weight', weight::float,
+              'evaluator_type', evaluator_type,
+              'evaluator_model', evaluator_model,
+              'blocking', blocking,
+              'threshold', threshold::float,
+              'trace_id', trace_id::text,
+              'created_at', to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+            )
+            ORDER BY created_at DESC, dimension ASC
+          ),
+          '[]'::jsonb
+        )::text
+        FROM rubric_scores
+        WHERE project_id = '{self._sql(project_id)}'
+          AND phase = '{self._sql(phase)}';
+        """
+        result = self._psql(sql)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr)
+        return list(self._parse_json_result(result.stdout))
+
 
     def record_phase_transition(
         self,
@@ -191,6 +301,15 @@ class ProjectRepository:
             )
 
         raise RuntimeError(f"Could not parse project record from psql output: {stdout}")
+
+    def _parse_json_result(self, stdout: str) -> Any:
+        for line in stdout.splitlines():
+            candidate = line.strip()
+            if not candidate:
+                continue
+            if candidate[0] in "[{":
+                return json.loads(candidate)
+        raise RuntimeError(f"Could not parse JSON from psql output: {stdout}")
 
     def _psql(self, sql: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(

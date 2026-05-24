@@ -1,0 +1,16 @@
+step_id: 85
+name: observability_endpoint_completion
+branch: codex/step-85-observability-endpoint-completion
+objective: >
+  Complete deterministic read-only observability endpoint coverage for metrics,
+  phase traces, retrieval routing audit logs, and rubric audit scores with
+  focused integration tests.
+commit_message: Complete observability endpoints
+validation_commands:
+  - make test PYTEST="python3 -m pytest tests/integration/test_observability_endpoints.py -vv"
+  - make validate
+files_expected:
+  - api/project_repository.py
+  - api/workflow.py
+  - tests/integration/test_observability_endpoints.py
+  - .pfos/baby_steps/085_observability_endpoint_completion.yaml
