@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from jobs.source_retraction_job import SourceRetractionJob
+import jobs.source_retraction_job as source_retraction_job
+from jobs.source_retraction_job import SourceRetractionJob, SourceRetractionJobResult
 from system.source_lifecycle_event_repository import SourceLifecycleEvent
 
 
@@ -181,3 +182,59 @@ def test_source_retraction_job_validates_limit_through_repository() -> None:
 
     with pytest.raises(ValueError, match="limit must be between 1 and 50"):
         job.run_once(limit=99)
+
+
+def test_source_retraction_job_result_cli_line() -> None:
+    result = SourceRetractionJobResult(
+        scanned_count=3,
+        enqueued_count=2,
+        failed_count=1,
+    )
+
+    assert result.as_cli_line() == (
+        "scanned_source_retraction_events=3 "
+        "enqueued_source_retraction_events=2 "
+        "failed_source_retraction_events=1"
+    )
+
+
+def test_source_retraction_job_main_runs_once_with_limit(monkeypatch, capsys) -> None:
+    class FakeJob:
+        seen_limits: list[int] = []
+
+        def run_once(self, limit: int = 50) -> SourceRetractionJobResult:
+            self.seen_limits.append(limit)
+            return SourceRetractionJobResult(
+                scanned_count=2,
+                enqueued_count=1,
+                failed_count=0,
+            )
+
+    monkeypatch.setattr(source_retraction_job, "SourceRetractionJob", FakeJob)
+
+    exit_code = source_retraction_job.main(["--limit", "7"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert FakeJob.seen_limits == [7]
+    assert captured.out.strip() == (
+        "scanned_source_retraction_events=2 "
+        "enqueued_source_retraction_events=1 "
+        "failed_source_retraction_events=0"
+    )
+    assert captured.err == ""
+
+
+def test_source_retraction_job_main_reports_failure(monkeypatch, capsys) -> None:
+    class FailingJob:
+        def run_once(self, limit: int = 50) -> SourceRetractionJobResult:
+            raise RuntimeError(f"failed at limit {limit}")
+
+    monkeypatch.setattr(source_retraction_job, "SourceRetractionJob", FailingJob)
+
+    exit_code = source_retraction_job.main(["--limit", "9"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.out == ""
+    assert captured.err.strip() == "source_retraction_job_error=failed at limit 9"
