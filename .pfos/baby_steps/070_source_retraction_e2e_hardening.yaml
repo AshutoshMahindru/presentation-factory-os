@@ -1,0 +1,16 @@
+step_id: 70
+name: source_retraction_e2e_hardening
+branch: codex/step-70-source-retraction-e2e-hardening
+objective: >
+  Harden source retraction E2E coverage by creating a source lifecycle event
+  through the API, running the existing source retraction job and outbox worker,
+  and verifying outbox, source-retraction, and hard-gate health status without
+  changing queue semantics.
+commit_message: Harden source retraction E2E coverage
+validation_commands:
+  - python3 -m compileall api system
+  - python3 -m pytest tests/integration/test_source_retraction_status_e2e_hardening.py -vv
+  - make validate
+files_expected:
+  - tests/integration/test_source_retraction_status_e2e_hardening.py
+  - .pfos/baby_steps/070_source_retraction_e2e_hardening.yaml
