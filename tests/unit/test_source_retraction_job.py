@@ -170,6 +170,32 @@ def test_source_retraction_job_marks_failed_when_outbox_enqueue_fails() -> None:
     ]
 
 
+def test_source_retraction_job_dry_run_scans_without_mutating() -> None:
+    event = SourceLifecycleEvent(
+        event_id="event-1",
+        project_id="project-1",
+        source_id="source-1",
+        event_type="retracted",
+        processing_status="pending",
+    )
+    lifecycle_repository = FakeSourceLifecycleEventRepository([event])
+    outbox_repository = FakeOutboxRepository()
+
+    job = SourceRetractionJob(
+        source_lifecycle_event_repository=lifecycle_repository,
+        outbox_repository=outbox_repository,
+    )
+
+    result = job.run_once(limit=10, dry_run=True)
+
+    assert result.scanned_count == 1
+    assert result.enqueued_count == 0
+    assert result.failed_count == 0
+    assert lifecycle_repository.list_calls == [10]
+    assert lifecycle_repository.status_updates == []
+    assert outbox_repository.rows == []
+
+
 def test_source_retraction_job_validates_limit_through_repository() -> None:
     class RejectingLifecycleRepository(FakeSourceLifecycleEventRepository):
         def list_pending_retraction_events(self, limit: int = 50) -> list[SourceLifecycleEvent]:
@@ -200,10 +226,10 @@ def test_source_retraction_job_result_cli_line() -> None:
 
 def test_source_retraction_job_main_runs_once_with_limit(monkeypatch, capsys) -> None:
     class FakeJob:
-        seen_limits: list[int] = []
+        seen_calls: list[dict[str, object]] = []
 
-        def run_once(self, limit: int = 50) -> SourceRetractionJobResult:
-            self.seen_limits.append(limit)
+        def run_once(self, limit: int = 50, dry_run: bool = False) -> SourceRetractionJobResult:
+            self.seen_calls.append({"limit": limit, "dry_run": dry_run})
             return SourceRetractionJobResult(
                 scanned_count=2,
                 enqueued_count=1,
@@ -216,7 +242,7 @@ def test_source_retraction_job_main_runs_once_with_limit(monkeypatch, capsys) ->
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert FakeJob.seen_limits == [7]
+    assert FakeJob.seen_calls == [{"limit": 7, "dry_run": False}]
     assert captured.out.strip() == (
         "scanned_source_retraction_events=2 "
         "enqueued_source_retraction_events=1 "
@@ -225,9 +251,36 @@ def test_source_retraction_job_main_runs_once_with_limit(monkeypatch, capsys) ->
     assert captured.err == ""
 
 
+def test_source_retraction_job_main_passes_dry_run(monkeypatch, capsys) -> None:
+    class FakeJob:
+        seen_calls: list[dict[str, object]] = []
+
+        def run_once(self, limit: int = 50, dry_run: bool = False) -> SourceRetractionJobResult:
+            self.seen_calls.append({"limit": limit, "dry_run": dry_run})
+            return SourceRetractionJobResult(
+                scanned_count=2,
+                enqueued_count=0,
+                failed_count=0,
+            )
+
+    monkeypatch.setattr(source_retraction_job, "SourceRetractionJob", FakeJob)
+
+    exit_code = source_retraction_job.main(["--limit", "7", "--dry-run"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert FakeJob.seen_calls == [{"limit": 7, "dry_run": True}]
+    assert captured.out.strip() == (
+        "scanned_source_retraction_events=2 "
+        "enqueued_source_retraction_events=0 "
+        "failed_source_retraction_events=0"
+    )
+    assert captured.err == ""
+
+
 def test_source_retraction_job_main_reports_failure(monkeypatch, capsys) -> None:
     class FailingJob:
-        def run_once(self, limit: int = 50) -> SourceRetractionJobResult:
+        def run_once(self, limit: int = 50, dry_run: bool = False) -> SourceRetractionJobResult:
             raise RuntimeError(f"failed at limit {limit}")
 
     monkeypatch.setattr(source_retraction_job, "SourceRetractionJob", FailingJob)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from jobs.outbox_worker import OutboxWorker
+import jobs.outbox_worker as outbox_worker
+from jobs.outbox_worker import OutboxWorker, OutboxWorkerResult
 from system.outbox_repository import PendingOutboxRow
 
 
@@ -69,6 +70,27 @@ def test_outbox_worker_dispatches_handler_and_marks_processed() -> None:
     assert result.failed_count == 0
     assert handled == [row]
     assert repository.processed == ["outbox-1"]
+    assert repository.failed == []
+
+
+def test_outbox_worker_dry_run_scans_without_handlers_or_mutation() -> None:
+    row = make_row()
+    repository = FakeOutboxRepository([row])
+    handled: list[PendingOutboxRow] = []
+
+    worker = OutboxWorker(
+        outbox_repository=repository,
+        handlers={"source_retracted": lambda pending_row: handled.append(pending_row)},
+    )
+
+    result = worker.run_once(limit=10, dry_run=True)
+
+    assert result.scanned_count == 1
+    assert result.processed_count == 0
+    assert result.failed_count == 0
+    assert repository.list_calls == [{"target_store": "neo4j", "limit": 10, "project_id": None}]
+    assert handled == []
+    assert repository.processed == []
     assert repository.failed == []
 
 
@@ -211,3 +233,27 @@ def test_outbox_worker_default_source_retracted_handler_fails_invalid_payload() 
     assert result.failed_count == 1
     assert repository.processed == []
     assert "missing required keys" in repository.failed[0]["last_error"]
+
+
+def test_outbox_worker_main_passes_dry_run(monkeypatch, capsys) -> None:
+    class FakeWorker:
+        seen_dry_runs: list[bool] = []
+
+        def run_once(self, dry_run: bool = False) -> OutboxWorkerResult:
+            self.seen_dry_runs.append(dry_run)
+            return OutboxWorkerResult(
+                scanned_count=2,
+                processed_count=0,
+                failed_count=0,
+            )
+
+    monkeypatch.setattr(outbox_worker, "OutboxWorker", FakeWorker)
+
+    exit_code = outbox_worker.main(["--dry-run"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert FakeWorker.seen_dry_runs == [True]
+    assert captured.out.strip() == (
+        "processed_outbox_rows=0 failed_outbox_rows=0 scanned_outbox_rows=2"
+    )

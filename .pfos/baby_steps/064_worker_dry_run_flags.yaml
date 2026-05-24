@@ -1,0 +1,18 @@
+step_id: 64
+name: worker_dry_run_flags
+branch: codex/step-64-worker-dry-run-flags
+objective: >
+  Add dry-run flags to the source retraction job and outbox worker so operators
+  can scan and report queue work without enqueueing, processing, invoking
+  handlers, or mutating database rows.
+commit_message: Add worker dry run flags
+validation_commands:
+  - python3 -m compileall jobs
+  - python3 -m pytest tests/unit/test_source_retraction_job.py tests/unit/test_outbox_worker.py tests/unit/test_outbox_worker_cli_compatibility.py -vv
+  - make validate
+files_expected:
+  - jobs/source_retraction_job.py
+  - jobs/outbox_worker.py
+  - tests/unit/test_source_retraction_job.py
+  - tests/unit/test_outbox_worker.py
+  - .pfos/baby_steps/064_worker_dry_run_flags.yaml
