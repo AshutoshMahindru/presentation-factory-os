@@ -1,0 +1,23 @@
+step_id: 83
+name: ui_operator_smoke_path
+branch: codex/step-83-ui-operator-smoke-path
+objective: >
+  Add a lightweight operator smoke path proving the UI control-plane surfaces
+  are discoverable and statically renderable without introducing a new UI test
+  framework.
+constraints:
+  - Keep baby-step YAML metadata-only.
+  - Do not change backend API behavior.
+  - Do not modify Docker, jobs, source lifecycle, outbox worker, database schema, or deck/export behavior.
+  - Do not weaken UI/backend contracts.
+  - Do not add fake data paths that hide real blockers.
+  - Do not add broad frontend tooling changes unless already configured.
+commit_message: Add UI operator smoke path
+validation_commands:
+  - python3 -m pytest tests/unit/test_ui_operator_smoke_path.py
+  - python3 -m compileall api system deck_builder financial_model
+  - make validate
+files_expected:
+  - docs/35_UI_Operator_Smoke_Path.md
+  - tests/unit/test_ui_operator_smoke_path.py
+  - .pfos/baby_steps/083_ui_operator_smoke_path.yaml
