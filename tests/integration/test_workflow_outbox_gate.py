@@ -3,7 +3,7 @@ from uuid import UUID
 
 from fastapi.testclient import TestClient
 
-from api.workflow import PROJECTS, app
+from api.workflow import app
 
 
 COMPOSE = ["docker", "compose", "-f", "docker-compose.apps.yaml"]
@@ -51,10 +51,6 @@ def valid_audience_profile():
             }
         ],
     }
-
-
-def setup_function():
-    PROJECTS.clear()
 
 
 def create_api_project_in_intake():

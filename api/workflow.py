@@ -7,6 +7,7 @@ from uuid import uuid4
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from api.project_repository import ProjectRepository
 from system.audience_profile_validator import AudienceProfileValidator
 from system.state_machine import GuardFailedError, StateMachine, StateMachineError
 
@@ -66,7 +67,7 @@ def postgres_outbox_not_drained(project_id: str) -> tuple[bool, int]:
 
 app = FastAPI(title="PFOS Workflow Service", version="3.2.4")
 
-PROJECTS: dict[str, dict[str, Any]] = {}
+project_repository = ProjectRepository()
 
 
 class CreateProjectRequest(BaseModel):
@@ -113,38 +114,34 @@ def create_project(payload: CreateProjectRequest) -> CreateProjectResponse:
             },
         )
 
-    project_id = str(uuid4())
-    PROJECTS[project_id] = {
-        "project_id": project_id,
-        "name": payload.name,
-        "audience": payload.audience,
-        "audience_profile": payload.audience_profile,
-        "client_name": payload.client_name,
-        "decision_required": payload.decision_required,
-        "objection_preemption_map": payload.objection_preemption_map,
-        "current_phase": "created",
-    }
+    project = project_repository.create_project(
+        name=payload.name,
+        audience=payload.audience,
+        audience_profile=payload.audience_profile,
+        client_name=payload.client_name,
+        decision_required=payload.decision_required,
+        objection_preemption_map=payload.objection_preemption_map,
+    )
 
     return CreateProjectResponse(
-        project_id=project_id,
-        phase="created",
+        project_id=project.project_id,
+        phase=project.current_phase,
         audience_profile_valid=True,
     )
 
 
 @app.post("/projects/{project_id}/phase-transitions")
 def request_phase_transition(project_id: str, payload: PhaseTransitionRequest) -> dict[str, Any]:
-    if project_id not in PROJECTS:
+    project = project_repository.get_project(project_id)
+    if project is None:
         raise HTTPException(status_code=404, detail={"error": "project_not_found"})
 
-    project = PROJECTS[project_id]
-
-    if project["current_phase"] != payload.from_phase:
+    if project.current_phase != payload.from_phase:
         raise HTTPException(
             status_code=409,
             detail={
                 "error": "phase_mismatch",
-                "current_phase": project["current_phase"],
+                "current_phase": project.current_phase,
                 "requested_from_phase": payload.from_phase,
             },
         )
@@ -170,7 +167,7 @@ def request_phase_transition(project_id: str, payload: PhaseTransitionRequest) -
 
     context = {
         "project": {
-            "audience_profile": project["audience_profile"],
+            "audience_profile": project.audience_profile,
         },
         "guards": payload.guard_context.get("guards", {}),
     }
@@ -211,7 +208,7 @@ def request_phase_transition(project_id: str, payload: PhaseTransitionRequest) -
             },
         ) from exc
 
-    project["current_phase"] = transition.to_phase
+    project_repository.update_phase(project_id, transition.to_phase)
 
     return {
         "transition_id": str(uuid4()),
