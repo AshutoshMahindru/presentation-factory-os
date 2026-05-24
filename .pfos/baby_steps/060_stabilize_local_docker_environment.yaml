@@ -1,0 +1,20 @@
+step_id: 60
+name: stabilize_local_docker_environment
+branch: codex/step-60-stabilize-local-docker-environment
+objective: >
+  Stabilize the local Docker-backed PFOS development environment by adding
+  canonical Compose lifecycle targets, a Docker environment doctor, schema
+  health checks, and operator runbook coverage without changing application,
+  source lifecycle, outbox, workflow, or database schema behavior.
+commit_message: Stabilize local Docker environment tooling
+validation_commands:
+  - python -m compileall scripts
+  - pytest tests/unit/test_check_docker_env.py -vv
+  - make validate
+files_expected:
+  - Makefile
+  - scripts/check_docker_env.py
+  - tests/unit/test_check_docker_env.py
+  - docs/28_Local_Docker_Environment_Runbook.md
+  - .pfos/baby_steps/060_stabilize_local_docker_environment.yaml
+  - .env.example

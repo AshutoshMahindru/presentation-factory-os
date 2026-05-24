@@ -1,8 +1,12 @@
-.PHONY: compile test no-agent-db-imports validate validate-json validate-yaml
+.PHONY: compile test no-agent-db-imports validate validate-json validate-yaml docker-ps docker-up docker-down docker-reset-dev docker-doctor validate-live validate-sql-live validate-cypher-live
 
 PYTHON ?= python3
 PYTEST ?= $(PYTHON) -m pytest
 PYTHON_SHIM_DIR ?= /tmp/pfos-python-shim
+COMPOSE_PROJECT_NAME ?= pfos-dev
+COMPOSE_FILE ?= docker-compose.apps.yaml
+DOCKER_COMPOSE ?= docker compose -p $(COMPOSE_PROJECT_NAME) -f $(COMPOSE_FILE)
+DOCKER_SERVICES ?= postgres neo4j qdrant workflow-service retrieval-engine tool-server agent-service
 
 compile:
 	$(PYTHON) -m compileall system evidence_graph retrieval_engine financial_model agents tool_server jobs api
@@ -10,7 +14,7 @@ compile:
 test:
 	mkdir -p "$(PYTHON_SHIM_DIR)"
 	ln -sf "$$(command -v $(PYTHON))" "$(PYTHON_SHIM_DIR)/python"
-	PATH="$(PYTHON_SHIM_DIR):$$PATH" $(PYTEST)
+	COMPOSE_PROJECT_NAME="$(COMPOSE_PROJECT_NAME)" PATH="$(PYTHON_SHIM_DIR):$$PATH" $(PYTEST)
 
 no-agent-db-imports:
 	$(PYTHON) scripts/check_no_agent_db_imports.py
@@ -23,12 +27,31 @@ validate-yaml:
 
 validate: compile validate-json validate-yaml no-agent-db-imports test
 
+docker-ps:
+	$(DOCKER_COMPOSE) ps
+
+docker-up:
+	$(DOCKER_COMPOSE) up -d $(DOCKER_SERVICES)
+
+docker-down:
+	$(DOCKER_COMPOSE) down --remove-orphans
+
+docker-reset-dev:
+	$(DOCKER_COMPOSE) down --remove-orphans --volumes
+	$(DOCKER_COMPOSE) up -d $(DOCKER_SERVICES)
+	$(MAKE) validate-sql-live
+
+docker-doctor:
+	$(PYTHON) scripts/check_docker_env.py --compose-project-name "$(COMPOSE_PROJECT_NAME)" --compose-file "$(COMPOSE_FILE)"
+
+validate-live: docker-up validate-sql-live docker-doctor validate
 
 validate-sql-live:
-	docker cp infra/postgres/init/001_schema.sql pfos-postgres-dev:/tmp/001_schema.sql
-	docker compose -f docker-compose.apps.yaml exec -T postgres psql -U pfos -d pfos -f /tmp/001_schema.sql
+	$(DOCKER_COMPOSE) cp infra/postgres/init/001_schema.sql postgres:/tmp/001_schema.sql
+	$(DOCKER_COMPOSE) exec -T postgres sh -lc 'for i in $$(seq 1 30); do pg_isready -U pfos -d pfos >/dev/null 2>&1 && exit 0; sleep 1; done; pg_isready -U pfos -d pfos'
+	$(DOCKER_COMPOSE) exec -T postgres psql -U pfos -d pfos -f /tmp/001_schema.sql
 
 
 validate-cypher-live:
-	docker cp infra/neo4j/constraints.cypher pfos-neo4j-dev:/tmp/constraints.cypher
-	docker compose -f docker-compose.apps.yaml exec -T neo4j cypher-shell -u neo4j -p pfos_neo4j_password --file /tmp/constraints.cypher
+	$(DOCKER_COMPOSE) cp infra/neo4j/constraints.cypher neo4j:/tmp/constraints.cypher
+	$(DOCKER_COMPOSE) exec -T neo4j cypher-shell -u neo4j -p pfos_neo4j_password --file /tmp/constraints.cypher
