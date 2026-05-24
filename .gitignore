@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+.env
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node / UI
+node_modules/
+.next/
+out/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Runtime outputs
+tool_server/outputs/*
+!tool_server/outputs/.gitkeep
+
+# Docker/runtime
+*.log
