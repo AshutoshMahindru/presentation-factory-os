@@ -45,7 +45,10 @@ class SourceRetractionJob:
         self.outbox_repository = outbox_repository or OutboxRepository()
 
     def run_once(self, limit: int = 50, dry_run: bool = False) -> SourceRetractionJobResult:
-        events = self.source_lifecycle_event_repository.list_pending_retraction_events(limit=limit)
+        if dry_run:
+            events = self.source_lifecycle_event_repository.list_pending_retraction_events(limit=limit)
+        else:
+            events = self.source_lifecycle_event_repository.claim_pending_retraction_events(limit=limit)
 
         scanned_count = len(events)
         if dry_run:
@@ -60,8 +63,9 @@ class SourceRetractionJob:
 
         for event in events:
             try:
-                self._process_event(event)
-                enqueued_count += 1
+                inserted = self._process_event(event)
+                if inserted:
+                    enqueued_count += 1
             except Exception as exc:
                 failed_count += 1
                 self.source_lifecycle_event_repository.update_processing_status(
@@ -76,28 +80,19 @@ class SourceRetractionJob:
             failed_count=failed_count,
         )
 
-    def _process_event(self, event: SourceLifecycleEvent) -> None:
-        self.source_lifecycle_event_repository.update_processing_status(
-            event_id=event.event_id,
-            processing_status="processing",
-        )
-
-        self.outbox_repository.create_outbox_row(
+    def _process_event(self, event: SourceLifecycleEvent) -> bool:
+        write_result = self.outbox_repository.create_source_retracted_outbox_row(
             project_id=event.project_id,
-            target_store="neo4j",
-            operation_type="source_retracted",
-            payload={
-                "source_lifecycle_event_id": event.event_id,
-                "project_id": event.project_id,
-                "source_id": event.source_id,
-                "event_type": event.event_type,
-            },
+            source_lifecycle_event_id=event.event_id,
+            source_id=event.source_id,
+            event_type=event.event_type,
         )
 
         self.source_lifecycle_event_repository.update_processing_status(
             event_id=event.event_id,
             processing_status="processed",
         )
+        return write_result.inserted
 
 
 def main(argv: list[str] | None = None) -> int:

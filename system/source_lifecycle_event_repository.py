@@ -133,6 +133,41 @@ class SourceLifecycleEventRepository:
 
         return events
 
+    def claim_pending_retraction_events(self, limit: int = 50) -> list[SourceLifecycleEvent]:
+        if limit <= 0 or limit > 50:
+            raise ValueError("limit must be between 1 and 50")
+
+        sql = f"""
+        WITH claimed AS (
+          SELECT id
+          FROM source_lifecycle_events
+          WHERE event_type = 'retracted'
+            AND processing_status = 'pending'
+          ORDER BY created_at ASC
+          LIMIT {int(limit)}
+          FOR UPDATE SKIP LOCKED
+        )
+        UPDATE source_lifecycle_events AS event
+        SET
+          processing_status = 'processing',
+          last_error = NULL
+        FROM claimed
+        WHERE event.id = claimed.id
+        RETURNING event.id, event.project_id, event.source_id, event.event_type, event.processing_status;
+        """
+
+        result = self._psql(sql)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr)
+
+        events: list[SourceLifecycleEvent] = []
+        for line in result.stdout.splitlines():
+            if "|" not in line:
+                continue
+            events.append(self._parse_event_result(line))
+
+        return events
+
     def update_processing_status(
         self,
         event_id: str,

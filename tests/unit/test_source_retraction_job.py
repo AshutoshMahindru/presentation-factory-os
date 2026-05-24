@@ -4,6 +4,7 @@ import pytest
 
 import jobs.source_retraction_job as source_retraction_job
 from jobs.source_retraction_job import SourceRetractionJob, SourceRetractionJobResult
+from system.outbox_repository import IdempotentOutboxWrite, OutboxRow
 from system.source_lifecycle_event_repository import SourceLifecycleEvent
 
 
@@ -15,7 +16,11 @@ class FakeSourceLifecycleEventRepository:
 
     def list_pending_retraction_events(self, limit: int = 50) -> list[SourceLifecycleEvent]:
         self.list_calls.append(limit)
-        return self.events
+        return self.events[:limit]
+
+    def claim_pending_retraction_events(self, limit: int = 50) -> list[SourceLifecycleEvent]:
+        self.list_calls.append(limit)
+        return self.events[:limit]
 
     def update_processing_status(
         self,
@@ -43,26 +48,45 @@ class FakeOutboxRepository:
     def __init__(self, fail: bool = False) -> None:
         self.fail = fail
         self.rows: list[dict[str, object]] = []
+        self.seen_event_ids: set[str] = set()
 
-    def create_outbox_row(
+    def create_source_retracted_outbox_row(
         self,
         project_id: str,
-        target_store: str,
-        operation_type: str,
-        payload: dict[str, object],
-    ) -> object:
+        source_lifecycle_event_id: str,
+        source_id: str,
+        event_type: str,
+    ) -> IdempotentOutboxWrite:
         if self.fail:
             raise RuntimeError("outbox unavailable")
 
-        self.rows.append(
-            {
+        inserted = source_lifecycle_event_id not in self.seen_event_ids
+        self.seen_event_ids.add(source_lifecycle_event_id)
+
+        row = {
+            "project_id": project_id,
+            "target_store": "neo4j",
+            "operation_type": "source_retracted",
+            "payload": {
+                "source_lifecycle_event_id": source_lifecycle_event_id,
                 "project_id": project_id,
-                "target_store": target_store,
-                "operation_type": operation_type,
-                "payload": payload,
-            }
+                "source_id": source_id,
+                "event_type": event_type,
+            },
+        }
+        if inserted:
+            self.rows.append(row)
+
+        return IdempotentOutboxWrite(
+            row=OutboxRow(
+                outbox_id=f"outbox-{source_lifecycle_event_id}",
+                project_id=project_id,
+                target_store="neo4j",
+                operation_type="source_retracted",
+                processed=False,
+            ),
+            inserted=inserted,
         )
-        return object()
 
 
 def test_source_retraction_job_no_pending_events() -> None:
@@ -109,11 +133,6 @@ def test_source_retraction_job_enqueues_outbox_and_marks_processed() -> None:
     assert lifecycle_repository.status_updates == [
         {
             "event_id": "event-1",
-            "processing_status": "processing",
-            "last_error": None,
-        },
-        {
-            "event_id": "event-1",
             "processing_status": "processed",
             "last_error": None,
         },
@@ -132,6 +151,76 @@ def test_source_retraction_job_enqueues_outbox_and_marks_processed() -> None:
             },
         }
     ]
+
+
+def test_source_retraction_job_repeated_scan_does_not_duplicate_source_retracted_outbox() -> None:
+    event = SourceLifecycleEvent(
+        event_id="event-1",
+        project_id="project-1",
+        source_id="source-1",
+        event_type="retracted",
+        processing_status="pending",
+    )
+    lifecycle_repository = FakeSourceLifecycleEventRepository([event])
+    outbox_repository = FakeOutboxRepository()
+    job = SourceRetractionJob(
+        source_lifecycle_event_repository=lifecycle_repository,
+        outbox_repository=outbox_repository,
+    )
+
+    first_result = job.run_once()
+    second_result = job.run_once()
+
+    assert first_result.enqueued_count == 1
+    assert first_result.failed_count == 0
+    assert second_result.enqueued_count == 0
+    assert second_result.failed_count == 0
+    assert len(outbox_repository.rows) == 1
+    assert outbox_repository.rows[0]["payload"] == {
+        "source_lifecycle_event_id": "event-1",
+        "project_id": "project-1",
+        "source_id": "source-1",
+        "event_type": "retracted",
+    }
+
+
+def test_source_retraction_job_load_count_stays_stable_after_repeat_scan() -> None:
+    class BatchLifecycleRepository(FakeSourceLifecycleEventRepository):
+        def __init__(self, events: list[SourceLifecycleEvent]) -> None:
+            super().__init__(events)
+            self.claim_index = 0
+
+        def claim_pending_retraction_events(self, limit: int = 50) -> list[SourceLifecycleEvent]:
+            self.list_calls.append(limit)
+            batch = self.events[self.claim_index : self.claim_index + limit]
+            self.claim_index += len(batch)
+            return batch
+
+    events = [
+        SourceLifecycleEvent(
+            event_id=f"event-{index}",
+            project_id="project-1",
+            source_id=f"source-{index}",
+            event_type="retracted",
+            processing_status="pending",
+        )
+        for index in range(100)
+    ]
+    lifecycle_repository = BatchLifecycleRepository(events)
+    outbox_repository = FakeOutboxRepository()
+    job = SourceRetractionJob(
+        source_lifecycle_event_repository=lifecycle_repository,
+        outbox_repository=outbox_repository,
+    )
+
+    first_result = job.run_once(limit=50)
+    second_result = job.run_once(limit=50)
+    repeat_result = job.run_once(limit=50)
+
+    assert first_result.enqueued_count == 50
+    assert second_result.enqueued_count == 50
+    assert repeat_result.enqueued_count == 0
+    assert len(outbox_repository.rows) == 100
 
 
 def test_source_retraction_job_marks_failed_when_outbox_enqueue_fails() -> None:
@@ -157,11 +246,6 @@ def test_source_retraction_job_marks_failed_when_outbox_enqueue_fails() -> None:
     assert result.failed_count == 1
 
     assert lifecycle_repository.status_updates == [
-        {
-            "event_id": "event-1",
-            "processing_status": "processing",
-            "last_error": None,
-        },
         {
             "event_id": "event-1",
             "processing_status": "failed",
@@ -199,6 +283,9 @@ def test_source_retraction_job_dry_run_scans_without_mutating() -> None:
 def test_source_retraction_job_validates_limit_through_repository() -> None:
     class RejectingLifecycleRepository(FakeSourceLifecycleEventRepository):
         def list_pending_retraction_events(self, limit: int = 50) -> list[SourceLifecycleEvent]:
+            raise ValueError("limit must be between 1 and 50")
+
+        def claim_pending_retraction_events(self, limit: int = 50) -> list[SourceLifecycleEvent]:
             raise ValueError("limit must be between 1 and 50")
 
     job = SourceRetractionJob(
