@@ -1,0 +1,17 @@
+step_id: 36
+name: baby_step_applier_v1
+branch: baby-step-36-baby-step-applier-v1
+objective: >
+  Add a local Baby Step Applier that can create files from a YAML plan,
+  run validation commands, show git status/diff, and optionally commit if green.
+
+commit_message: Add baby step applier v1
+
+validation_commands:
+  - python -m compileall scripts
+  - pytest tests/unit/test_baby_step_applier.py -vv
+
+files_expected:
+  - scripts/baby_step_applier.py
+  - tests/unit/test_baby_step_applier.py
+  - .pfos/baby_steps/036_baby_step_applier_v1.yaml
