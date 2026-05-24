@@ -74,7 +74,7 @@ def test_outbox_worker_processes_unprocessed_row():
     assert "t" in check.stdout
 
 
-def test_outbox_worker_increments_error_count_for_bad_operation():
+def test_outbox_worker_processes_claim_updated_row():
     setup = """
     WITH project AS (
       INSERT INTO projects (name, audience, audience_profile)
@@ -82,7 +82,7 @@ def test_outbox_worker_increments_error_count_for_bad_operation():
       RETURNING id
     )
     INSERT INTO outbox (project_id, target_store, operation_type, payload)
-    SELECT id, 'neo4j', 'claim_updated', '{"force_error":true}'::jsonb
+    SELECT id, 'neo4j', 'claim_updated', '{"event":"claim_updated_smoke"}'::jsonb
     FROM project
     RETURNING id;
     """
@@ -91,9 +91,6 @@ def test_outbox_worker_increments_error_count_for_bad_operation():
 
     outbox_id = extract_uuid(setup_result.stdout)
 
-    # For v1, monkey-patch by corrupting operation_type after insert would violate CHECK.
-    # Instead, verify normal known operation processes cleanly and failure behavior is covered
-    # in the retry/backoff test added in the next baby step.
     worker_result = subprocess.run(
         ["python", "-m", "jobs.outbox_worker"],
         text=True,

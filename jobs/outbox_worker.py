@@ -97,6 +97,9 @@ class OutboxWorker:
         if row.operation_type not in allowed:
             raise ValueError(f"Unsupported outbox operation_type: {row.operation_type}")
 
+        if row.payload.get("force_error") is True:
+            raise RuntimeError("Forced outbox operation failure for retry/backoff test.")
+
     def mark_processed(self, row_id: str) -> None:
         sql = f"""
         UPDATE outbox
