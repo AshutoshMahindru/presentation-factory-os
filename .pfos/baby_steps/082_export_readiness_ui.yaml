@@ -1,0 +1,23 @@
+step_id: 82
+name: export_readiness_ui
+branch: codex/step-82-export-readiness-ui
+objective: >
+  Add a read-only operator-facing export readiness UI component that surfaces
+  exposed export blockers from existing control-plane health data and optional
+  deck/export metadata without changing backend API behavior or deck/export
+  gates.
+constraints:
+  - Keep baby-step YAML metadata-only.
+  - Do not modify backend API behavior.
+  - Do not modify Docker, jobs, source lifecycle, outbox worker, database schema, or deck/export behavior.
+  - Do not weaken export gates.
+  - Do not create fake export success paths.
+  - Do not add speculative API endpoints.
+commit_message: Add export readiness UI
+validation_commands:
+  - python3 -m compileall api system deck_builder financial_model
+  - make validate
+files_expected:
+  - ui/components/ExportReadinessPanel.tsx
+  - docs/34_UI_Operator_Experience_Plan.md
+  - .pfos/baby_steps/082_export_readiness_ui.yaml
