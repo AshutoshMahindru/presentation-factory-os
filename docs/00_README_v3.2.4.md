@@ -71,6 +71,8 @@ For baby-step bootstrapping from an empty directory, run the commands in `03_Bab
 | `22_AudienceProfile.schema.json` | JSON Schema for IC audience psychology and stakeholder mapping |
 | `23_Financial_Ingestion_Pipeline.yaml` | Deterministic Excel/CSV/manual/API ingestion boundary for formula-backed financial cells |
 | `24_API_Examples.md` | Example payloads for project creation, phase transitions, and approval submission |
+| `30_Health_Endpoint_Surface.md` | Implemented and planned workflow-service health endpoints |
+| `31_API_Control_Plane_Contracts.md` | API/control-plane endpoint contract map and test coverage |
 
 ## v3.2.4 scope decisions
 

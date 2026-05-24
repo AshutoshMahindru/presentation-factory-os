@@ -1,0 +1,18 @@
+step_id: 71
+name: api_control_plane_doc_refresh
+branch: codex/step-71-api-control-plane-doc-refresh
+objective: >
+  Refresh API/control-plane documentation to match implemented workflow-service
+  endpoints and integration-tested behavior across health, lifecycle, approval,
+  export, and source retraction flows.
+commit_message: Refresh API control-plane docs
+validation_commands:
+  - python3 -m compileall api system
+  - python3 -m pytest tests/integration/test_health_endpoint_normalization.py tests/integration/test_api_examples_contract.py tests/integration/test_project_lifecycle_happy_path_e2e.py tests/integration/test_review_approved_export_e2e.py tests/integration/test_source_retraction_status_e2e_hardening.py -vv
+  - make validate
+files_expected:
+  - docs/00_README_v3.2.4.md
+  - docs/20_Cross_Reference_Matrix.md
+  - docs/30_Health_Endpoint_Surface.md
+  - docs/31_API_Control_Plane_Contracts.md
+  - .pfos/baby_steps/071_api_control_plane_doc_refresh.yaml
