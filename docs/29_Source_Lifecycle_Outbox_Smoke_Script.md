@@ -28,6 +28,22 @@ DATABASE_URL=postgresql://pfos:pfos@localhost:5432/pfos make smoke-source-lifecy
 The Makefile target uses the repository `PYTHON` variable, which defaults to
 `python3`.
 
+## Live Docker/Postgres Validation
+
+When the stabilized Docker/Postgres environment is reachable from the host, run
+the live integration check with a database URL that points at that Postgres
+instance:
+
+```bash
+PFOS_LIVE_DATABASE_URL=postgresql://pfos:pfos_dev_password@localhost:5432/pfos pytest tests/integration/test_source_lifecycle_outbox_live_smoke.py -vv
+```
+
+The live test invokes `make smoke-source-lifecycle-outbox` with `DATABASE_URL`
+set to the same live Postgres URL and verifies that `source_lifecycle_events`
+and `outbox` row counts are unchanged before and after the smoke target runs.
+If `PFOS_LIVE_DATABASE_URL` is not set, the integration test skips instead of
+attempting to connect to a database.
+
 If `--database-url` is omitted, the script checks environment variables in this
 order:
 

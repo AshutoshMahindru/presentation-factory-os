@@ -1,0 +1,17 @@
+step_id: 63
+name: source_lifecycle_outbox_live_smoke_test
+branch: codex/step-63-source-lifecycle-outbox-live-smoke-test
+objective: >
+  Add a live, read-only validation path for the source lifecycle and outbox
+  smoke Makefile target against a stabilized Postgres environment without
+  mutating queue state, invoking workers, or changing schema.
+commit_message: Add source lifecycle outbox live smoke test
+validation_commands:
+  - python3 -m pytest tests/integration/test_source_lifecycle_outbox_live_smoke.py -vv
+  - python3 -m compileall scripts
+  - python3 -m pytest tests/unit/test_source_lifecycle_outbox_smoke.py -vv
+  - make validate
+files_expected:
+  - tests/integration/test_source_lifecycle_outbox_live_smoke.py
+  - docs/29_Source_Lifecycle_Outbox_Smoke_Script.md
+  - .pfos/baby_steps/063_source_lifecycle_outbox_live_smoke_test.yaml
