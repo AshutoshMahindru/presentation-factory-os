@@ -41,6 +41,8 @@ export interface ProjectOutboxStatus {
   unprocessed_count: number;
   failed_count: number;
   oldest_unprocessed_age_seconds: number | null;
+  pending_rows?: OutboxQueueRow[];
+  failed_rows?: OutboxQueueRow[];
 }
 
 export interface SourceRetractionStatus {
@@ -50,6 +52,32 @@ export interface SourceRetractionStatus {
   processing_count: number;
   failed_count: number;
   oldest_open_age_seconds: number | null;
+  pending_events?: SourceLifecycleEventStatus[];
+  failed_events?: SourceLifecycleEventStatus[];
+  blocked_events?: SourceLifecycleEventStatus[];
+}
+
+export interface OutboxQueueRow {
+  outbox_id?: string;
+  id?: string;
+  project_id?: string;
+  target_store?: string;
+  operation_type?: string;
+  error_count?: number;
+  last_error?: string | null;
+  created_at?: string | null;
+}
+
+export interface SourceLifecycleEventStatus {
+  event_id?: string;
+  id?: string;
+  project_id?: string;
+  source_id?: string;
+  event_type?: string;
+  processing_status?: string;
+  error_count?: number;
+  last_error?: string | null;
+  created_at?: string | null;
 }
 
 export interface HardGateCheck {
