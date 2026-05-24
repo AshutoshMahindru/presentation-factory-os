@@ -1,4 +1,4 @@
-from deck_builder.render_python_pptx import build_outline_artifact
+from deck_builder.render_python_pptx import build_export_metadata, build_outline_artifact
 
 
 def valid_slide_payload():
@@ -44,3 +44,39 @@ def test_invalid_slide_job_returns_blocked_reason():
     assert result.generated is False
     assert result.artifact is None
     assert any("visual_quality" in reason for reason in result.blocking_reasons)
+
+
+def test_build_export_metadata_maps_slides_claims_sources_and_financial_cells():
+    slide = valid_slide_payload()
+    slide["content"]["financial_refs"] = ["FM!CM_M18_BASE"]
+
+    metadata = build_export_metadata(
+        slides=[slide],
+        slide_claim_refs={"slide_001": ["claim_002", "claim_001"]},
+        claim_source_refs={
+            "claim_001": ["source_002", "source_001"],
+            "claim_002": ["source_003"],
+        },
+        financial_cells={
+            "FM!CM_M18_BASE": {
+                "cell_ref": "FM!CM_M18_BASE",
+                "validation_status": "validated",
+            }
+        },
+    )
+
+    assert metadata == {
+        "metadata_type": "deck_export_metadata",
+        "schema_version": "1.0",
+        "slide_id_to_claim_refs": {"slide_001": ["claim_001", "claim_002"]},
+        "claim_refs_to_source_refs": {
+            "claim_001": ["source_001", "source_002"],
+            "claim_002": ["source_003"],
+        },
+        "financial_refs_to_financial_cells": {
+            "FM!CM_M18_BASE": {
+                "cell_ref": "FM!CM_M18_BASE",
+                "validation_status": "validated",
+            }
+        },
+    }

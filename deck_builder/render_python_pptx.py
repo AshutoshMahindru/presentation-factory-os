@@ -58,6 +58,43 @@ def build_outline_artifact(slide_job: dict[str, Any]) -> DeckArtifactResult:
     )
 
 
+def build_export_metadata(
+    slides: list[dict[str, Any]],
+    slide_claim_refs: dict[str, list[str]],
+    claim_source_refs: dict[str, list[str]],
+    financial_cells: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """
+    Build deterministic export metadata used by appendices and evidence maps.
+
+    The function is intentionally side-effect free. It does not validate whether
+    references are complete; later gates decide whether missing refs block export.
+    """
+
+    slide_to_claim_refs: dict[str, list[str]] = {}
+    claim_refs_to_source_refs: dict[str, list[str]] = {}
+    financial_refs_to_cells: dict[str, dict[str, Any] | None] = {}
+
+    for slide in slides:
+        slide_id = str(slide["slide_id"])
+        claim_refs = sorted(slide_claim_refs.get(slide_id, []))
+        slide_to_claim_refs[slide_id] = claim_refs
+
+        for claim_ref in claim_refs:
+            claim_refs_to_source_refs[claim_ref] = sorted(claim_source_refs.get(claim_ref, []))
+
+        for financial_ref in sorted(slide.get("content", {}).get("financial_refs", []) or []):
+            financial_refs_to_cells[financial_ref] = financial_cells.get(financial_ref)
+
+    return {
+        "metadata_type": "deck_export_metadata",
+        "schema_version": "1.0",
+        "slide_id_to_claim_refs": slide_to_claim_refs,
+        "claim_refs_to_source_refs": dict(sorted(claim_refs_to_source_refs.items())),
+        "financial_refs_to_financial_cells": dict(sorted(financial_refs_to_cells.items())),
+    }
+
+
 def _canonical_hash(payload: dict[str, Any]) -> str:
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
