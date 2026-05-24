@@ -177,7 +177,13 @@ def request_phase_transition(project_id: str, payload: PhaseTransitionRequest) -
 
     context = {
         "project": {
+            "project_id": project.project_id,
             "audience_profile": project.audience_profile,
+        },
+        "transition": {
+            "from_phase": payload.from_phase,
+            "to_phase": payload.to_phase,
+            "kind": payload.transition_kind,
         },
         "guards": payload.guard_context.get("guards", {}),
     }
