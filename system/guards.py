@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import subprocess
 from dataclasses import dataclass
 from typing import Any
 
-from system.approval_quorum import ApprovalEntry, ApprovalQuorum
+from system.approval_quorum import ApprovalQuorum
+from system.approval_ledger_repository import ApprovalLedgerRepository
 from system.audience_profile_validator import AudienceProfileValidator
 
 
@@ -16,92 +16,6 @@ class GuardResult:
     name: str
     passed: bool
     reason: str | None = None
-
-
-class ApprovalLedgerRepository:
-    """
-    Baby-step Postgres-backed approval ledger reader.
-
-    Uses docker compose + psql to stay consistent with the current repository
-    pattern. This keeps approval_quorum_met deterministic and prevents phase
-    advancement from depending on caller-supplied boolean flags.
-    """
-
-    def list_approvals_for_phase(self, project_id: str, phase: str) -> list[ApprovalEntry]:
-        sql = f"""
-        WITH latest_phase_entry AS (
-          SELECT max(created_at) AS entered_at
-          FROM phase_transitions
-          WHERE project_id = '{self._sql(project_id)}'
-            AND to_phase = '{self._sql(phase)}'
-            AND transition_kind IN ('forward', 'initial')
-        )
-        SELECT
-          approval_ledger.actor_email,
-          approval_ledger.role,
-          approval_ledger.decision
-        FROM approval_ledger
-        CROSS JOIN latest_phase_entry
-        WHERE approval_ledger.project_id = '{self._sql(project_id)}'
-          AND approval_ledger.phase = '{self._sql(phase)}'
-          AND (
-            latest_phase_entry.entered_at IS NULL
-            OR approval_ledger.created_at > latest_phase_entry.entered_at
-          )
-        ORDER BY approval_ledger.created_at ASC;
-        """
-
-        result = subprocess.run(
-            [
-                "docker",
-                "compose",
-                "-f",
-                COMPOSE_FILE,
-                "exec",
-                "-T",
-                "postgres",
-                "psql",
-                "-U",
-                "pfos",
-                "-d",
-                "pfos",
-                "-v",
-                "ON_ERROR_STOP=1",
-                "-A",
-                "-t",
-                "-F",
-                "|",
-                "-c",
-                sql,
-            ],
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-        )
-
-        if result.returncode != 0:
-            raise RuntimeError(result.stderr)
-
-        entries: list[ApprovalEntry] = []
-        for line in result.stdout.splitlines():
-            if "|" not in line:
-                continue
-
-            actor_email, role, decision = [part.strip() for part in line.split("|")]
-            entries.append(
-                ApprovalEntry(
-                    actor_email=actor_email,
-                    role=role,
-                    decision=decision,
-                )
-            )
-
-        return entries
-
-
-    def _sql(self, value: str) -> str:
-        return str(value).replace("'", "''")
 
 
 class GuardEvaluator:

@@ -5,6 +5,8 @@ import subprocess
 from dataclasses import dataclass
 from typing import Any
 
+from system.approval_ledger_repository import ApprovalLedgerRepository
+
 
 COMPOSE_FILE = "docker-compose.apps.yaml"
 
@@ -16,6 +18,9 @@ class ProjectRecord:
     audience: str
     audience_profile: dict[str, Any]
     current_phase: str
+
+
+approval_ledger_repository = ApprovalLedgerRepository()
 
 
 class ProjectRepository:
@@ -93,76 +98,18 @@ class ProjectRepository:
         rubric_score_snapshot: dict[str, Any],
         notes: str | None = None,
     ) -> None:
-        snapshot_json = self._json(rubric_score_snapshot)
-
-        sql = f"""
-        INSERT INTO approval_ledger (
-          project_id,
-          phase,
-          actor_email,
-          role,
-          decision,
-          rubric_score_snapshot,
-          notes
+        approval_ledger_repository.record_approval(
+            project_id=project_id,
+            phase=phase,
+            actor_email=actor_email,
+            role=role,
+            decision=decision,
+            rubric_score_snapshot=rubric_score_snapshot,
+            notes=notes,
         )
-        VALUES (
-          '{self._sql(project_id)}',
-          '{self._sql(phase)}',
-          '{self._sql(actor_email)}',
-          '{self._sql(role)}',
-          '{self._sql(decision)}',
-          '{snapshot_json}'::jsonb,
-          {self._nullable(notes)}
-        );
-        """
-
-        result = self._psql(sql)
-        if result.returncode != 0:
-            raise RuntimeError(result.stderr)
 
     def list_approvals_for_phase(self, project_id: str, phase: str) -> list[dict[str, Any]]:
-        sql = f"""
-        WITH latest_phase_entry AS (
-          SELECT max(created_at) AS entered_at
-          FROM phase_transitions
-          WHERE project_id = '{self._sql(project_id)}'
-            AND to_phase = '{self._sql(phase)}'
-            AND transition_kind IN ('forward', 'initial')
-        )
-        SELECT
-          approval_ledger.actor_email,
-          approval_ledger.role,
-          approval_ledger.decision
-        FROM approval_ledger
-        CROSS JOIN latest_phase_entry
-        WHERE approval_ledger.project_id = '{self._sql(project_id)}'
-          AND approval_ledger.phase = '{self._sql(phase)}'
-          AND (
-            latest_phase_entry.entered_at IS NULL
-            OR approval_ledger.created_at > latest_phase_entry.entered_at
-          )
-        ORDER BY approval_ledger.created_at ASC;
-        """
-
-        result = self._psql(sql)
-        if result.returncode != 0:
-            raise RuntimeError(result.stderr)
-
-        approvals: list[dict[str, Any]] = []
-        for line in result.stdout.splitlines():
-            if "|" not in line:
-                continue
-
-            actor_email, role, decision = [part.strip() for part in line.split("|")]
-            approvals.append(
-                {
-                    "actor_email": actor_email,
-                    "role": role,
-                    "decision": decision,
-                }
-            )
-
-        return approvals
+        return approval_ledger_repository.list_approval_dicts_for_phase(project_id, phase)
 
 
     def record_phase_transition(
