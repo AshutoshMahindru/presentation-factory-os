@@ -1,0 +1,228 @@
+step_id: 47
+name: source_retraction_status_endpoint
+branch: baby-step-47-source-retraction-status-endpoint
+objective: >
+  Add a project-scoped source retraction cascade status endpoint backed by the
+  centralized SourceLifecycleRepository so clients can inspect hard-gate blocking
+  caused by pending, processing, or failed source retraction cascades.
+
+commit_message: Add source retraction status endpoint
+
+commands:
+  - name: add source retraction status endpoint and tests
+    run: |
+      python - <<'PY'
+      from pathlib import Path
+
+      path = Path("api/workflow.py")
+      text = path.read_text()
+
+      if "from system.source_lifecycle_repository import SourceLifecycleRepository" not in text:
+          text = text.replace(
+              "from system.outbox_repository import OutboxRepository\n",
+              "from system.outbox_repository import OutboxRepository\nfrom system.source_lifecycle_repository import SourceLifecycleRepository\n",
+          )
+
+      if "source_lifecycle_repository = SourceLifecycleRepository()" not in text:
+          text = text.replace(
+              "outbox_repository = OutboxRepository()\n",
+              "outbox_repository = OutboxRepository()\nsource_lifecycle_repository = SourceLifecycleRepository()\n",
+          )
+
+      if "class SourceRetractionStatusResponse(BaseModel):" not in text:
+          marker = '''class OutboxStatusResponse(BaseModel):
+          project_id: str
+          blocked: bool
+          unprocessed_count: int
+          failed_count: int
+          oldest_unprocessed_age_seconds: int | None = None
+      '''
+
+          replacement = marker + '''
+
+
+      class SourceRetractionStatusResponse(BaseModel):
+          project_id: str
+          blocked: bool
+          pending_count: int
+          processing_count: int
+          failed_count: int
+          oldest_open_age_seconds: int | None = None
+      '''
+
+          if marker not in text:
+              raise SystemExit("Could not find OutboxStatusResponse block.")
+
+          text = text.replace(marker, replacement)
+
+      if "@app.get(\"/health/projects/{project_id}/source-retractions\"" not in text:
+          insert_before = '''@app.get("/projects/{project_id}/approvals/status/{phase}", response_model=ApprovalStatusResponse)
+      def get_approval_status(project_id: str, phase: str) -> ApprovalStatusResponse:
+      '''
+
+          endpoint = '''@app.get("/health/projects/{project_id}/source-retractions", response_model=SourceRetractionStatusResponse)
+      def get_project_source_retraction_status(project_id: str) -> SourceRetractionStatusResponse:
+          project = project_repository.get_project(project_id)
+          if project is None:
+              raise HTTPException(status_code=404, detail={"error": "project_not_found"})
+
+          status = source_lifecycle_repository.get_project_retraction_cascade_status(project_id)
+
+          return SourceRetractionStatusResponse(
+              project_id=project_id,
+              blocked=status.blocked,
+              pending_count=status.pending_count,
+              processing_count=status.processing_count,
+              failed_count=status.failed_count,
+              oldest_open_age_seconds=status.oldest_open_age_seconds,
+          )
+
+
+      '''
+
+          if insert_before not in text:
+              raise SystemExit("Could not find approval status endpoint insertion point.")
+
+          text = text.replace(insert_before, endpoint + insert_before)
+
+      path.write_text(text)
+      PY
+
+      cat > tests/integration/test_source_retraction_status_endpoint.py <<'PY'
+      from __future__ import annotations
+
+      from dataclasses import dataclass
+
+      from fastapi.testclient import TestClient
+
+      import api.workflow as workflow
+      from api.workflow import app, project_repository
+
+
+      client = TestClient(app)
+
+
+      VALID_AUDIENCE_PROFILE = {
+          "decision_maker_type": "ic_partner",
+          "risk_tolerance": "medium",
+          "familiarity_with_topic": "informed",
+          "known_objections": ["market_size", "team_risk"],
+          "stakeholder_map": [
+              {
+                  "role": "economic_buyer",
+                  "concern": "return on invested capital",
+              }
+          ],
+      }
+
+
+      @dataclass(frozen=True)
+      class FakeRetractionCascadeStatus:
+          project_id: str
+          blocked: bool
+          pending_count: int
+          processing_count: int
+          failed_count: int
+          oldest_open_age_seconds: int | None
+
+
+      class FakeSourceLifecycleRepository:
+          def __init__(self, status: FakeRetractionCascadeStatus) -> None:
+              self.status = status
+              self.calls: list[str] = []
+
+          def get_project_retraction_cascade_status(self, project_id: str) -> FakeRetractionCascadeStatus:
+              self.calls.append(project_id)
+              return self.status
+
+
+      def test_source_retraction_status_endpoint_reports_clean_project(monkeypatch) -> None:
+          project = project_repository.create_project(
+              name="Step 47 Clean Source Retraction Project",
+              audience="Investment committee",
+              audience_profile=VALID_AUDIENCE_PROFILE,
+          )
+
+          fake_repository = FakeSourceLifecycleRepository(
+              FakeRetractionCascadeStatus(
+                  project_id=project.project_id,
+                  blocked=False,
+                  pending_count=0,
+                  processing_count=0,
+                  failed_count=0,
+                  oldest_open_age_seconds=None,
+              )
+          )
+
+          monkeypatch.setattr(workflow, "source_lifecycle_repository", fake_repository)
+
+          response = client.get(f"/health/projects/{project.project_id}/source-retractions")
+
+          assert response.status_code == 200
+          body = response.json()
+
+          assert fake_repository.calls == [project.project_id]
+          assert body == {
+              "project_id": project.project_id,
+              "blocked": False,
+              "pending_count": 0,
+              "processing_count": 0,
+              "failed_count": 0,
+              "oldest_open_age_seconds": None,
+          }
+
+
+      def test_source_retraction_status_endpoint_reports_blocked_project(monkeypatch) -> None:
+          project = project_repository.create_project(
+              name="Step 47 Blocked Source Retraction Project",
+              audience="Investment committee",
+              audience_profile=VALID_AUDIENCE_PROFILE,
+          )
+
+          fake_repository = FakeSourceLifecycleRepository(
+              FakeRetractionCascadeStatus(
+                  project_id=project.project_id,
+                  blocked=True,
+                  pending_count=2,
+                  processing_count=1,
+                  failed_count=1,
+                  oldest_open_age_seconds=77,
+              )
+          )
+
+          monkeypatch.setattr(workflow, "source_lifecycle_repository", fake_repository)
+
+          response = client.get(f"/health/projects/{project.project_id}/source-retractions")
+
+          assert response.status_code == 200
+          body = response.json()
+
+          assert fake_repository.calls == [project.project_id]
+          assert body["project_id"] == project.project_id
+          assert body["blocked"] is True
+          assert body["pending_count"] == 2
+          assert body["processing_count"] == 1
+          assert body["failed_count"] == 1
+          assert body["oldest_open_age_seconds"] == 77
+
+
+      def test_source_retraction_status_endpoint_404_for_unknown_project() -> None:
+          response = client.get(
+              "/health/projects/00000000-0000-0000-0000-000000000000/source-retractions"
+          )
+
+          assert response.status_code == 404
+          assert response.json()["detail"]["error"] == "project_not_found"
+      PY
+
+validation_commands:
+  - python -m compileall api system
+  - pytest tests/unit/test_source_lifecycle_repository.py -vv
+  - pytest tests/unit/test_hard_gate_source_retraction.py -vv
+  - pytest tests/integration/test_source_retraction_status_endpoint.py -vv
+  - make validate
+
+files_expected:
+  - api/workflow.py
+  - tests/integration/test_source_retraction_status_endpoint.py
+  - .pfos/baby_steps/047_source_retraction_status_endpoint.yaml

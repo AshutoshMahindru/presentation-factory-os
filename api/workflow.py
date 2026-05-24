@@ -10,6 +10,7 @@ from api.project_repository import ProjectRepository
 from system.audience_profile_validator import AudienceProfileValidator
 from system.approval_quorum import ApprovalEntry, ApprovalQuorum
 from system.outbox_repository import OutboxRepository
+from system.source_lifecycle_repository import SourceLifecycleRepository
 from system.state_machine import GuardFailedError, StateMachine, StateMachineError
 
 
@@ -18,6 +19,7 @@ app = FastAPI(title="PFOS Workflow Service", version="3.2.4")
 
 project_repository = ProjectRepository()
 outbox_repository = OutboxRepository()
+source_lifecycle_repository = SourceLifecycleRepository()
 
 
 class CreateProjectRequest(BaseModel):
@@ -86,6 +88,16 @@ def approval_escalation_status(approvals: list[dict[str, Any]], blocking_rejecti
     return "none", None
 
 
+
+class SourceRetractionStatusResponse(BaseModel):
+    project_id: str
+    blocked: bool
+    pending_count: int
+    processing_count: int
+    failed_count: int
+    oldest_open_age_seconds: int | None = None
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"service": "workflow-service", "status": "ok"}
@@ -119,6 +131,24 @@ def create_project(payload: CreateProjectRequest) -> CreateProjectResponse:
         project_id=project.project_id,
         phase=project.current_phase,
         audience_profile_valid=True,
+    )
+
+
+@app.get("/health/projects/{project_id}/source-retractions", response_model=SourceRetractionStatusResponse)
+def get_project_source_retraction_status(project_id: str) -> SourceRetractionStatusResponse:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail={"error": "project_not_found"})
+
+    status = source_lifecycle_repository.get_project_retraction_cascade_status(project_id)
+
+    return SourceRetractionStatusResponse(
+        project_id=project_id,
+        blocked=status.blocked,
+        pending_count=status.pending_count,
+        processing_count=status.processing_count,
+        failed_count=status.failed_count,
+        oldest_open_age_seconds=status.oldest_open_age_seconds,
     )
 
 
