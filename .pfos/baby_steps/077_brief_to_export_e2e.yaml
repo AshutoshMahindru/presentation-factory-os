@@ -1,0 +1,21 @@
+step_id: 77
+name: brief_to_export_e2e
+branch: codex/step-77-brief-to-export-e2e
+objective: >
+  Add a golden path brief-to-export integration test covering project creation,
+  evidence/source setup, validated financial cell usage, slide job validation,
+  narrative validation, visual QA pass, approval, and deterministic export.
+constraints:
+  - Keep baby-step YAML metadata-only.
+  - Do not modify Docker, Makefile, jobs, API, or outbox worker.
+  - Do not change application behavior outside the deck/export lane.
+commit_message: Add brief to export golden path test
+validation_commands:
+  - python3 -m compileall deck_builder financial_model
+  - python3 -m pytest tests/integration/test_end_to_end_brief_to_export.py -vv
+  - python3 -m pytest tests/unit/test_export_gate.py -vv
+  - python3 -m pytest tests/unit/test_render_python_pptx.py -vv
+  - make validate
+files_expected:
+  - tests/integration/test_end_to_end_brief_to_export.py
+  - .pfos/baby_steps/077_brief_to_export_e2e.yaml
