@@ -2,15 +2,17 @@ from __future__ import annotations
 
 import argparse
 import os
-import subprocess
 from dataclasses import dataclass
-from typing import Callable
+from typing import Any, Callable
+
+from neo4j import GraphDatabase
 
 from system.neo4j_retraction_handler import Neo4jSourceRetractionHandler
 from system.outbox_repository import OutboxRepository, PendingOutboxRow
 
 
 OutboxHandler = Callable[[PendingOutboxRow], None]
+Neo4jDriverFactory = Callable[..., Any]
 
 
 @dataclass(frozen=True)
@@ -27,6 +29,32 @@ class OutboxWorkerResult:
         )
 
 
+@dataclass(frozen=True)
+class Neo4jConnectionConfig:
+    uri: str
+    user: str
+    password: str
+    database: str | None = None
+
+    @classmethod
+    def from_env(cls) -> "Neo4jConnectionConfig":
+        user = os.environ.get("NEO4J_USER", "neo4j")
+        password = os.environ.get("NEO4J_PASSWORD")
+
+        auth = os.environ.get("NEO4J_AUTH", "")
+        if password is None and "/" in auth:
+            auth_user, auth_password = auth.split("/", 1)
+            user = os.environ.get("NEO4J_USER", auth_user)
+            password = auth_password
+
+        return cls(
+            uri=os.environ.get("NEO4J_URI", "bolt://localhost:7687"),
+            user=user,
+            password=password or "pfos_neo4j_password",
+            database=os.environ.get("NEO4J_DATABASE") or None,
+        )
+
+
 class Neo4jProjectNodeHandler:
     """
     Backward-compatible Neo4j handler for current integration tests.
@@ -37,6 +65,14 @@ class Neo4jProjectNodeHandler:
     The handler supports legacy outbox payloads for claim_updated,
     phase_transition_side_effect, and retreat_archive_downstream rows.
     """
+
+    def __init__(
+        self,
+        config: Neo4jConnectionConfig | None = None,
+        driver_factory: Neo4jDriverFactory | None = None,
+    ) -> None:
+        self.config = config or Neo4jConnectionConfig.from_env()
+        self.driver_factory = driver_factory or GraphDatabase.driver
 
     def __call__(self, row: PendingOutboxRow) -> None:
         if os.environ.get("PFOS_FORCE_OUTBOX_FAILURE") == "1" or row.payload.get("force_error") is True:
@@ -59,72 +95,47 @@ class Neo4jProjectNodeHandler:
             or ""
         )
 
-        set_lines = ["p.updated_at = datetime()"]
-        if name:
-            set_lines.append(f"p.name = '{self._cypher(name)}'")
-        if current_phase:
-            set_lines.append(f"p.current_phase = '{self._cypher(current_phase)}'")
-
-        cypher = f"""
-        MERGE (p:Project {{id: '{self._cypher(project_id)}'}})
-        SET {", ".join(set_lines)}
-        RETURN p.id;
-        """
-
-        password = self._neo4j_password()
-
-        result = subprocess.run(
-            [
-                "docker",
-                "compose",
-                "-f",
-                "docker-compose.apps.yaml",
-                "exec",
-                "-T",
-                "neo4j",
-                "cypher-shell",
-                "-u",
-                "neo4j",
-                "-p",
-                password,
-                cypher,
-            ],
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
+        driver = self.driver_factory(
+            self.config.uri,
+            auth=(self.config.user, self.config.password),
         )
+        try:
+            session_options = {}
+            if self.config.database:
+                session_options["database"] = self.config.database
 
-        if result.returncode != 0:
-            raise RuntimeError(result.stderr.strip() or result.stdout.strip())
+            with driver.session(**session_options) as session:
+                session.execute_write(
+                    self._merge_project_node,
+                    project_id=project_id,
+                    name=name or None,
+                    current_phase=current_phase or None,
+                )
+        finally:
+            driver.close()
 
-    def _neo4j_password(self) -> str:
-        result = subprocess.run(
-            [
-                "docker",
-                "compose",
-                "-f",
-                "docker-compose.apps.yaml",
-                "exec",
-                "-T",
-                "neo4j",
-                "printenv",
-                "NEO4J_AUTH",
-            ],
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
+    @staticmethod
+    def _merge_project_node(
+        tx: Any,
+        *,
+        project_id: str,
+        name: str | None,
+        current_phase: str | None,
+    ) -> None:
+        result = tx.run(
+            """
+            MERGE (p:Project {id: $project_id})
+            SET
+              p.updated_at = datetime(),
+              p.name = coalesce($name, p.name),
+              p.current_phase = coalesce($current_phase, p.current_phase)
+            RETURN p.id AS id
+            """,
+            project_id=project_id,
+            name=name,
+            current_phase=current_phase,
         )
-
-        auth = result.stdout.strip()
-        if "/" in auth:
-            return auth.split("/", 1)[1]
-
-        return "pfos_neo4j_password"
-
-    def _cypher(self, value: str) -> str:
-        return str(value).replace("\\", "\\\\").replace("'", "\\'")
+        result.consume()
 
 
 class OutboxWorker:

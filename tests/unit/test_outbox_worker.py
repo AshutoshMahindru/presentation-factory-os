@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import jobs.outbox_worker as outbox_worker
-from jobs.outbox_worker import OutboxWorker, OutboxWorkerResult
+from jobs.outbox_worker import Neo4jConnectionConfig, OutboxWorker, OutboxWorkerResult
 from system.outbox_repository import PendingOutboxRow
 
 
@@ -139,30 +139,45 @@ def test_outbox_worker_marks_failed_when_handler_raises() -> None:
     ]
 
 
-def test_neo4j_project_handler_uses_id_property_and_payload_fields(monkeypatch) -> None:
-    import jobs.outbox_worker as outbox_worker
+def test_neo4j_project_handler_uses_driver_with_id_property_and_payload_fields() -> None:
     from jobs.outbox_worker import Neo4jProjectNodeHandler
 
-    commands: list[list[str]] = []
+    calls: dict[str, object] = {}
 
-    class FakeResult:
-        returncode = 0
-        stdout = "neo4j/pfos_neo4j_password\n"
-        stderr = ""
+    class FakeQueryResult:
+        def consume(self) -> None:
+            calls["consumed"] = True
 
-    def fake_run(command, text, stdout, stderr, check):
-        commands.append(command)
-        if "printenv" in command:
-            return FakeResult()
+    class FakeTransaction:
+        def run(self, query: str, **parameters: object) -> FakeQueryResult:
+            calls["query"] = query
+            calls["parameters"] = parameters
+            return FakeQueryResult()
 
-        class CypherResult:
-            returncode = 0
-            stdout = "id\nproject-1\n"
-            stderr = ""
+    class FakeSession:
+        def __enter__(self) -> "FakeSession":
+            calls["session_entered"] = True
+            return self
 
-        return CypherResult()
+        def __exit__(self, exc_type, exc, tb) -> None:
+            calls["session_exited"] = True
 
-    monkeypatch.setattr(outbox_worker.subprocess, "run", fake_run)
+        def execute_write(self, callback, **kwargs) -> None:
+            calls["write_kwargs"] = kwargs
+            callback(FakeTransaction(), **kwargs)
+
+    class FakeDriver:
+        def session(self, **options: object) -> FakeSession:
+            calls["session_options"] = options
+            return FakeSession()
+
+        def close(self) -> None:
+            calls["closed"] = True
+
+    def fake_driver_factory(uri: str, auth: tuple[str, str]) -> FakeDriver:
+        calls["uri"] = uri
+        calls["auth"] = auth
+        return FakeDriver()
 
     row = PendingOutboxRow(
         outbox_id="outbox-1",
@@ -177,15 +192,154 @@ def test_neo4j_project_handler_uses_id_property_and_payload_fields(monkeypatch) 
         error_count=0,
     )
 
-    Neo4jProjectNodeHandler()(row)
+    Neo4jProjectNodeHandler(
+        config=Neo4jConnectionConfig(
+            uri="bolt://neo4j:7687",
+            user="neo4j",
+            password="secret",
+            database="neo4j",
+        ),
+        driver_factory=fake_driver_factory,
+    )(row)
 
-    cypher_command = commands[-1]
-    cypher = cypher_command[-1]
+    assert calls["uri"] == "bolt://neo4j:7687"
+    assert calls["auth"] == ("neo4j", "secret")
+    assert calls["session_options"] == {"database": "neo4j"}
+    assert "MERGE (p:Project {id: $project_id})" in str(calls["query"])
+    assert "coalesce($name, p.name)" in str(calls["query"])
+    assert "coalesce($current_phase, p.current_phase)" in str(calls["query"])
+    assert calls["parameters"] == {
+        "project_id": "project-1",
+        "name": "Demo Project",
+        "current_phase": "strategy",
+    }
+    assert calls["write_kwargs"] == {
+        "project_id": "project-1",
+        "name": "Demo Project",
+        "current_phase": "strategy",
+    }
+    assert calls["consumed"] is True
+    assert calls["closed"] is True
 
-    assert "MERGE (p:Project {id: 'project-1'})" in cypher
-    assert "p.name = 'Demo Project'" in cypher
-    assert "p.current_phase = 'strategy'" in cypher
-    assert "project_id:" not in cypher
+
+def test_neo4j_project_handler_reads_connection_config_from_env(monkeypatch) -> None:
+    monkeypatch.setenv("NEO4J_URI", "bolt://custom-neo4j:7687")
+    monkeypatch.setenv("NEO4J_USER", "custom-user")
+    monkeypatch.setenv("NEO4J_PASSWORD", "custom-password")
+    monkeypatch.setenv("NEO4J_DATABASE", "custom-db")
+
+    config = Neo4jConnectionConfig.from_env()
+
+    assert config == Neo4jConnectionConfig(
+        uri="bolt://custom-neo4j:7687",
+        user="custom-user",
+        password="custom-password",
+        database="custom-db",
+    )
+
+
+def test_neo4j_project_handler_reads_password_from_neo4j_auth(monkeypatch) -> None:
+    monkeypatch.delenv("NEO4J_PASSWORD", raising=False)
+    monkeypatch.delenv("NEO4J_USER", raising=False)
+    monkeypatch.setenv("NEO4J_AUTH", "neo4j/auth-password")
+
+    config = Neo4jConnectionConfig.from_env()
+
+    assert config.user == "neo4j"
+    assert config.password == "auth-password"
+
+
+def test_neo4j_project_handler_forced_failure_does_not_open_driver(monkeypatch) -> None:
+    from jobs.outbox_worker import Neo4jProjectNodeHandler
+
+    driver_calls: list[tuple[object, ...]] = []
+
+    def fake_driver_factory(*args: object, **kwargs: object) -> object:
+        driver_calls.append(args)
+        raise AssertionError("driver should not be opened")
+
+    monkeypatch.setenv("PFOS_FORCE_OUTBOX_FAILURE", "1")
+
+    row = PendingOutboxRow(
+        outbox_id="outbox-1",
+        project_id="project-1",
+        target_store="neo4j",
+        operation_type="phase_transition_side_effect",
+        payload={"project_id": "project-1"},
+        error_count=0,
+    )
+
+    try:
+        Neo4jProjectNodeHandler(driver_factory=fake_driver_factory)(row)
+    except RuntimeError as exc:
+        assert str(exc) == "Forced outbox operation failure"
+    else:
+        raise AssertionError("Expected forced outbox operation failure")
+
+    assert driver_calls == []
+
+
+def test_outbox_worker_marks_failed_when_neo4j_driver_write_raises() -> None:
+    from jobs.outbox_worker import Neo4jProjectNodeHandler
+
+    class FailingSession:
+        def __enter__(self) -> "FailingSession":
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def execute_write(self, callback, **kwargs) -> None:
+            raise RuntimeError("neo4j unavailable")
+
+    class FailingDriver:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def session(self, **options: object) -> FailingSession:
+            return FailingSession()
+
+        def close(self) -> None:
+            self.closed = True
+
+    driver = FailingDriver()
+
+    def fake_driver_factory(uri: str, auth: tuple[str, str]) -> FailingDriver:
+        return driver
+
+    row = PendingOutboxRow(
+        outbox_id="outbox-1",
+        project_id="project-1",
+        target_store="neo4j",
+        operation_type="phase_transition_side_effect",
+        payload={"project_id": "project-1"},
+        error_count=0,
+    )
+    repository = FakeOutboxRepository([row])
+    worker = OutboxWorker(
+        outbox_repository=repository,
+        handlers={
+            "phase_transition_side_effect": Neo4jProjectNodeHandler(
+                config=Neo4jConnectionConfig(
+                    uri="bolt://neo4j:7687",
+                    user="neo4j",
+                    password="secret",
+                ),
+                driver_factory=fake_driver_factory,
+            )
+        },
+    )
+
+    result = worker.run_once()
+
+    assert result.scanned_count == 1
+    assert result.processed_count == 0
+    assert result.failed_count == 1
+    assert repository.processed == []
+    assert repository.failed == [
+        {"outbox_id": "outbox-1", "last_error": "neo4j unavailable"}
+    ]
+    assert driver.closed is True
 
 
 def test_outbox_worker_default_source_retracted_handler_is_contract_validator() -> None:

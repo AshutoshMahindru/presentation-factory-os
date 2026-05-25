@@ -1,0 +1,26 @@
+step_id: 93
+name: neo4j_driver_outbox_worker
+branch: codex/step-93-neo4j-driver-outbox-worker
+objective: >
+  Replace subprocess and cypher-shell based Neo4j access in the deterministic
+  outbox worker with the official Neo4j Python driver while preserving CLI
+  output, idempotent project-node writes, and outbox retry semantics.
+constraints:
+  - Use the official neo4j Python driver for Neo4j writes in jobs/outbox_worker.py.
+  - Preserve existing outbox worker CLI behavior and output.
+  - Preserve retry and error_count semantics through the outbox repository.
+  - Preserve idempotent Project node MERGE behavior.
+  - Do not weaken outbox tests.
+  - Do not modify the agents database import ban.
+  - Unit tests must mock the Neo4j driver and must not require live Neo4j.
+commit_message: Use Neo4j driver in outbox worker
+validation_commands:
+  - python3 -m compileall jobs
+  - python3 -m pytest tests/unit/test_outbox_worker.py -vv
+  - python3 -m pytest tests/integration/test_outbox_neo4j_side_effect.py -vv
+  - make validate
+files_expected:
+  - jobs/outbox_worker.py
+  - tests/unit/test_outbox_worker.py
+  - .pfos/baby_steps/093_neo4j_driver_outbox_worker.yaml
+  - docs/41_Outbox_Worker_Neo4j_Driver.md
