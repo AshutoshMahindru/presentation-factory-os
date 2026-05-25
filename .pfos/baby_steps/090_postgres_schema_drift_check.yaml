@@ -1,0 +1,22 @@
+step_id: 90
+name: postgres_schema_drift_check
+branch: codex/step-90-postgres-schema-drift-check
+objective: >
+  Add a deterministic validation check that fails when the documented
+  canonical Postgres schema in docs/04_Database_Schemas.sql drifts from the
+  runtime bootstrap schema in infra/postgres/init/001_schema.sql.
+constraints:
+  - Metadata only for this baby-step file.
+  - Do not change application behavior.
+  - Do not change schema content unless required to resolve existing drift.
+commit_message: Add Postgres schema drift validation
+validation_commands:
+  - python3 -m compileall scripts
+  - python3 -m pytest tests/unit/test_postgres_schema_drift.py -vv
+  - make validate
+files_expected:
+  - scripts/check_postgres_schema_drift.py
+  - tests/unit/test_postgres_schema_drift.py
+  - Makefile
+  - .pfos/baby_steps/090_postgres_schema_drift_check.yaml
+  - docs/38_Postgres_Schema_Drift_Check.md

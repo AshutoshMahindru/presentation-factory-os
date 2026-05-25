@@ -1,4 +1,4 @@
-.PHONY: compile test no-agent-db-imports validate validate-json validate-yaml smoke-source-lifecycle-outbox docker-ps docker-up docker-down docker-reset-dev docker-doctor validate-live validate-sql-live validate-cypher-live
+.PHONY: compile test no-agent-db-imports validate validate-json validate-yaml validate-sql-drift smoke-source-lifecycle-outbox docker-ps docker-up docker-down docker-reset-dev docker-doctor validate-live validate-sql-live validate-cypher-live
 
 PYTHON ?= python3
 PYTEST ?= $(PYTHON) -m pytest
@@ -28,7 +28,10 @@ validate-json:
 validate-yaml:
 	$(PYTHON) scripts/validate_yaml.py
 
-validate: compile validate-json validate-yaml no-agent-db-imports test
+validate-sql-drift:
+	$(PYTHON) scripts/check_postgres_schema_drift.py
+
+validate: compile validate-json validate-yaml validate-sql-drift no-agent-db-imports test
 
 docker-ps:
 	$(DOCKER_COMPOSE) ps
