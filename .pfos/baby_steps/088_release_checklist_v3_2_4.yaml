@@ -1,0 +1,20 @@
+step_id: 88
+name: release_checklist_v3_2_4
+branch: codex/step-88-release-checklist-v3-2-4
+objective: >
+  Add the final PFOS v3.2.4 release checklist covering clean main, Docker
+  readiness, schema bootstrap, local and live validation, source
+  lifecycle/outbox smoke checks, API/control-plane E2E, deck/export E2E,
+  documented UI operator path, observability endpoints, load tests, demo seed
+  project readiness, known limitations, deferred items, and final git tag
+  recommendation.
+constraints:
+  - Documentation and release metadata only.
+  - Do not change application, Docker, schema, test, or Makefile behavior.
+commit_message: Add PFOS v3.2.4 release checklist
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - docs/33_Release_Checklist_v3.2.4.md
+  - .pfos/baby_steps/088_release_checklist_v3_2_4.yaml
