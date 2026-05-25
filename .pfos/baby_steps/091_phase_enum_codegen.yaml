@@ -1,0 +1,23 @@
+step_id: 91
+name: phase_enum_codegen
+branch: codex/step-91-phase-enum-codegen
+objective: >
+  Generate backend and UI phase types from docs/08_StateMachine_Spec.yaml so
+  phase names cannot drift across Python and TypeScript surfaces.
+constraints:
+  - Metadata only for this baby-step file.
+  - Do not change state machine behavior.
+commit_message: Add phase enum codegen
+validation_commands:
+  - python3 -m compileall scripts system
+  - python3 scripts/generate_phase_enums.py --check
+  - python3 -m pytest tests/unit/test_phase_enum_codegen.py -vv
+  - make validate
+files_expected:
+  - scripts/generate_phase_enums.py
+  - system/generated_phase_enums.py
+  - ui/lib/phaseTypes.ts
+  - tests/unit/test_phase_enum_codegen.py
+  - Makefile
+  - .pfos/baby_steps/091_phase_enum_codegen.yaml
+  - docs/39_Phase_Enum_Codegen.md
