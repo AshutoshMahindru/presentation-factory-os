@@ -1,0 +1,19 @@
+step_id: 94
+name: retrieval_router_classifier_upgrade
+branch: codex/step-94-retrieval-router-classifier-upgrade
+objective: >
+  Upgrade RetrievalRouter classification from keyword counting to a pluggable
+  lightweight classifier with deterministic local fallback, preserving standard
+  context payload routing behavior and unknown-query gap reporting.
+commit_message: Upgrade retrieval router classifier
+validation_commands:
+  - python3 -m compileall retrieval_engine
+  - python3 -m pytest tests/unit/test_retrieval_router_classifier.py -vv
+  - python3 -m pytest tests/unit/test_retrieval_payload_schema.py -vv
+  - make validate
+files_expected:
+  - retrieval_engine/router.py
+  - retrieval_engine/classifiers.py
+  - tests/unit/test_retrieval_router_classifier.py
+  - .pfos/baby_steps/094_retrieval_router_classifier_upgrade.yaml
+  - docs/42_Retrieval_Router_Classifier.md

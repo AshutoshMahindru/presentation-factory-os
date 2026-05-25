@@ -3,7 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import uuid4
 
-from retrieval_engine.classifiers import QueryClassification, QueryClassifier
+from retrieval_engine.classifiers import (
+    QueryClassification,
+    QueryClassifier,
+    RetrievalQueryClassifier,
+)
 
 
 @dataclass(frozen=True)
@@ -17,7 +21,7 @@ class RoutingDecision:
 
 
 class RetrievalRouter:
-    def __init__(self, classifier: QueryClassifier | None = None) -> None:
+    def __init__(self, classifier: RetrievalQueryClassifier | None = None) -> None:
         self.classifier = classifier or QueryClassifier()
 
     def route(self, query: str, mode_hint: str | None = None) -> RoutingDecision:
