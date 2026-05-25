@@ -1,0 +1,20 @@
+step_id: 89
+name: github_actions_validation_workflow
+branch: codex/step-89-github-actions-validation-workflow
+objective: >
+  Add a checked-in GitHub Actions validation workflow for PFOS v3.2.4
+  post-RC hardening that runs repository validation and service-backed
+  integration checks without secrets or remote LLM API calls.
+constraints:
+  - Do not change application behavior.
+  - Do not require repository secrets.
+  - Do not call remote LLM APIs.
+  - Keep load tests optional until executable load-test assertions are checked in.
+commit_message: Add GitHub Actions validation workflow
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - .github/workflows/validate.yml
+  - .pfos/baby_steps/089_github_actions_validation_workflow.yaml
+  - docs/37_GitHub_Actions_Validation.md
