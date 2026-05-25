@@ -133,6 +133,67 @@ def test_outbox_repository_creates_outbox_row() -> None:
     assert '"source_id": "source-1"' in captured["sql"]
 
 
+def test_outbox_repository_idempotently_creates_source_retracted_outbox_row() -> None:
+    from system.outbox_repository import OutboxRepository
+
+    repository = OutboxRepository()
+    captured: dict[str, str] = {}
+
+    class FakeResult:
+        returncode = 0
+        stdout = "outbox-1|project-1|neo4j|source_retracted|f|t\n"
+        stderr = ""
+
+    def fake_psql(sql: str) -> FakeResult:
+        captured["sql"] = sql
+        return FakeResult()
+
+    repository._psql = fake_psql  # type: ignore[method-assign]
+
+    result = repository.create_source_retracted_outbox_row(
+        project_id="project-1",
+        source_lifecycle_event_id="event-1",
+        source_id="source-1",
+        event_type="retracted",
+    )
+
+    assert result.inserted is True
+    assert result.row.outbox_id == "outbox-1"
+    assert result.row.operation_type == "source_retracted"
+    assert "pg_advisory_xact_lock" in captured["sql"]
+    assert "WITH existing AS" in captured["sql"]
+    assert "payload->>'source_lifecycle_event_id' = 'event-1'" in captured["sql"]
+    assert "WHERE NOT EXISTS (SELECT 1 FROM existing)" in captured["sql"]
+    assert '"source_lifecycle_event_id": "event-1"' in captured["sql"]
+
+
+def test_outbox_repository_reuses_existing_source_retracted_outbox_row() -> None:
+    from system.outbox_repository import OutboxRepository
+
+    repository = OutboxRepository()
+
+    class FakeResult:
+        returncode = 0
+        stdout = "outbox-existing|project-1|neo4j|source_retracted|t|f\n"
+        stderr = ""
+
+    def fake_psql(sql: str) -> FakeResult:
+        return FakeResult()
+
+    repository._psql = fake_psql  # type: ignore[method-assign]
+
+    result = repository.create_source_retracted_outbox_row(
+        project_id="project-1",
+        source_lifecycle_event_id="event-1",
+        source_id="source-1",
+        event_type="retracted",
+    )
+
+    assert result.inserted is False
+    assert result.row.outbox_id == "outbox-existing"
+    assert result.row.processed is True
+
+
 def test_outbox_repository_lists_unprocessed_rows() -> None:
     from system.outbox_repository import OutboxRepository
 

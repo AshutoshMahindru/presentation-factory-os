@@ -183,3 +183,31 @@ def test_source_lifecycle_event_repository_get_event_raises_when_missing() -> No
 
     with pytest.raises(LookupError, match="Source lifecycle event not found"):
         repository.get_event("missing-event")
+
+
+def test_source_lifecycle_event_repository_claims_pending_retractions_with_skip_locked() -> None:
+    repository = SourceLifecycleEventRepository()
+    captured: dict[str, str] = {}
+
+    def fake_psql(sql: str) -> FakeResult:
+        captured["sql"] = sql
+        return FakeResult("event-1|project-1|source-1|retracted|processing\n")
+
+    repository._psql = fake_psql  # type: ignore[method-assign]
+
+    events = repository.claim_pending_retraction_events(limit=10)
+
+    assert len(events) == 1
+    assert events[0].event_id == "event-1"
+    assert events[0].processing_status == "processing"
+    assert "FOR UPDATE SKIP LOCKED" in captured["sql"]
+    assert "processing_status = 'pending'" in captured["sql"]
+    assert "processing_status = 'processing'" in captured["sql"]
+    assert "LIMIT 10" in captured["sql"]
+
+
+def test_source_lifecycle_event_repository_claim_rejects_invalid_limit() -> None:
+    repository = SourceLifecycleEventRepository()
+
+    with pytest.raises(ValueError, match="limit must be between 1 and 50"):
+        repository.claim_pending_retraction_events(limit=99)

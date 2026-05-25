@@ -28,6 +28,12 @@ class OutboxRow:
 
 
 @dataclass(frozen=True)
+class IdempotentOutboxWrite:
+    row: OutboxRow
+    inserted: bool
+
+
+@dataclass(frozen=True)
 class PendingOutboxRow:
     outbox_id: str
     project_id: str
@@ -102,6 +108,97 @@ class OutboxRepository:
             target_store=parts[2],
             operation_type=parts[3],
             processed=parts[4].lower() in {"t", "true"},
+        )
+
+    def create_source_retracted_outbox_row(
+        self,
+        project_id: str,
+        source_lifecycle_event_id: str,
+        source_id: str,
+        event_type: str,
+    ) -> IdempotentOutboxWrite:
+        if event_type != "retracted":
+            raise ValueError("source_retracted outbox rows require event_type='retracted'")
+
+        payload_json = self._json(
+            {
+                "source_lifecycle_event_id": source_lifecycle_event_id,
+                "project_id": project_id,
+                "source_id": source_id,
+                "event_type": event_type,
+            }
+        )
+        idempotency_lock_key = self._sql(f"source_retracted:{source_lifecycle_event_id}")
+
+        sql = f"""
+        BEGIN;
+        SELECT pg_advisory_xact_lock(hashtext('{idempotency_lock_key}'));
+
+        WITH existing AS (
+          SELECT
+            id,
+            project_id,
+            target_store,
+            operation_type,
+            processed,
+            FALSE AS inserted
+          FROM outbox
+          WHERE project_id = '{self._sql(project_id)}'
+            AND target_store = 'neo4j'
+            AND operation_type = 'source_retracted'
+            AND payload->>'source_lifecycle_event_id' = '{self._sql(source_lifecycle_event_id)}'
+          ORDER BY created_at ASC
+          LIMIT 1
+        ),
+        inserted AS (
+          INSERT INTO outbox (
+            project_id,
+            target_store,
+            operation_type,
+            payload,
+            processed
+          )
+          SELECT
+            '{self._sql(project_id)}',
+            'neo4j',
+            'source_retracted',
+            '{payload_json}'::jsonb,
+            FALSE
+          WHERE NOT EXISTS (SELECT 1 FROM existing)
+          RETURNING id, project_id, target_store, operation_type, processed, TRUE AS inserted
+        )
+        SELECT id, project_id, target_store, operation_type, processed, inserted
+        FROM inserted
+        UNION ALL
+        SELECT id, project_id, target_store, operation_type, processed, inserted
+        FROM existing
+        LIMIT 1;
+        COMMIT;
+        """
+
+        result = self._psql(sql)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr)
+
+        parts: list[str] = []
+        for line in result.stdout.splitlines():
+            candidate_parts = [part.strip() for part in line.split("|")]
+            if len(candidate_parts) == 6:
+                parts = candidate_parts
+                break
+
+        if len(parts) != 6:
+            raise RuntimeError(f"Unexpected source_retracted outbox write result: {result.stdout!r}")
+
+        return IdempotentOutboxWrite(
+            row=OutboxRow(
+                outbox_id=parts[0],
+                project_id=parts[1],
+                target_store=parts[2],
+                operation_type=parts[3],
+                processed=parts[4].lower() in {"t", "true"},
+            ),
+            inserted=parts[5].lower() in {"t", "true"},
         )
 
     def list_project_rows(self, project_id: str) -> list[PendingOutboxRow]:
