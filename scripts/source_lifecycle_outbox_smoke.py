@@ -5,6 +5,8 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Sequence
 
+from system.db import resolve_database_url as resolve_system_database_url
+
 
 REQUIRED_TABLES = (
     "projects",
@@ -114,11 +116,7 @@ def resolve_database_url(
     cli_database_url: str | None,
     env: Mapping[str, str] | None = None,
 ) -> str | None:
-    if cli_database_url:
-        return cli_database_url
-
-    source_env = env if env is not None else os.environ
-    return source_env.get("DATABASE_URL") or source_env.get("POSTGRES_URL")
+    return resolve_system_database_url(database_url=cli_database_url, env=env or os.environ)
 
 
 def create_psycopg_query_executor(database_url: str) -> QueryExecutor:

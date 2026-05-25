@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import subprocess
 from dataclasses import dataclass
 
-
-COMPOSE_FILE = "docker-compose.apps.yaml"
+from system.db import execute_psql
 
 
 @dataclass(frozen=True)
@@ -72,35 +70,8 @@ class StaleArtifactRepository:
             total_count=total_count,
         )
 
-    def _psql(self, sql: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            [
-                "docker",
-                "compose",
-                "-f",
-                COMPOSE_FILE,
-                "exec",
-                "-T",
-                "postgres",
-                "psql",
-                "-U",
-                "pfos",
-                "-d",
-                "pfos",
-                "-v",
-                "ON_ERROR_STOP=1",
-                "-A",
-                "-t",
-                "-F",
-                "|",
-                "-c",
-                sql,
-            ],
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-        )
+    def _psql(self, sql: str):
+        return execute_psql(sql)
 
     def _parse_int(self, value: str) -> int:
         if value == "":

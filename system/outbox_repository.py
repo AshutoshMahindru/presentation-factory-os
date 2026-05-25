@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from dataclasses import dataclass
 from typing import Any
 
-
-COMPOSE_FILE = "docker-compose.apps.yaml"
+from system.db import execute_psql
 
 
 @dataclass(frozen=True)
@@ -376,35 +374,8 @@ class OutboxRepository:
         status = self.get_project_outbox_status(project_id)
         return status.blocked, status.unprocessed_count + status.failed_count
 
-    def _psql(self, sql: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            [
-                "docker",
-                "compose",
-                "-f",
-                COMPOSE_FILE,
-                "exec",
-                "-T",
-                "postgres",
-                "psql",
-                "-U",
-                "pfos",
-                "-d",
-                "pfos",
-                "-v",
-                "ON_ERROR_STOP=1",
-                "-A",
-                "-t",
-                "-F",
-                "|",
-                "-c",
-                sql,
-            ],
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-        )
+    def _psql(self, sql: str):
+        return execute_psql(sql)
 
     def _json(self, value: dict[str, Any]) -> str:
         return self._sql(json.dumps(value, sort_keys=True))
