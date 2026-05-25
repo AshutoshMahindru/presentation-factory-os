@@ -1,0 +1,61 @@
+{
+  "seed_id": "pfos_v3_2_4_mobile_pizza_series_a_ic_deck",
+  "seed_version": "1.0.0",
+  "api_version": "3.2.4",
+  "media_type": "application/vnd.pfos.v3.2.4+json",
+  "source_example": "docs/24_API_Examples.md#create-project",
+  "description": "Canonical local/operator demo project seed derived from the Series A IC Deck - Mobile Pizza Platform API example.",
+  "project": {
+    "name": "Series A IC Deck - Mobile Pizza Platform",
+    "client_name": "Mobile Pizza Platform",
+    "decision_required": "Decide whether to approve a Series A investment memo for IC review.",
+    "audience": "Risk-aware investment committee evaluating a capital allocation decision",
+    "audience_profile": {
+      "decision_maker_type": "ic_partner",
+      "risk_tolerance": "medium",
+      "familiarity_with_topic": "informed",
+      "known_objections": [
+        "team_risk",
+        "market_size",
+        "timing"
+      ],
+      "stakeholder_map": [
+        {
+          "role": "economic_buyer",
+          "concern": "return on invested capital",
+          "influence_level": "high"
+        },
+        {
+          "role": "technical_evaluator",
+          "concern": "operational scalability",
+          "influence_level": "medium"
+        }
+      ]
+    },
+    "objection_preemption_map": {
+      "team_risk": {
+        "planned_response": "Show advisor/operator coverage and phased execution gates",
+        "target_phase": "narrative"
+      },
+      "market_size": {
+        "planned_response": "Triangulate TAM/SAM/SOM with sourced demand proxies",
+        "target_phase": "research"
+      },
+      "timing": {
+        "planned_response": "Tie market-entry urgency to sourced demand and competitive timing evidence",
+        "target_phase": "strategy"
+      }
+    }
+  },
+  "operator_validation": {
+    "create_project_endpoint": "POST /projects",
+    "expected_initial_phase": "created",
+    "recommended_follow_up_endpoints": [
+      "GET /health/projects/{project_id}/outbox",
+      "GET /health/projects/{project_id}/source-retractions",
+      "GET /health/projects/{project_id}/hard-gates",
+      "GET /projects/{project_id}/approvals/status/review"
+    ],
+    "export_note": "This seed does not represent a successful export. Any export demo must use the existing deck/export validation gates."
+  }
+}
