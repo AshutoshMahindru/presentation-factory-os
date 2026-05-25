@@ -1,0 +1,16 @@
+step_id: 86
+name: outbox_source_lifecycle_load_tests
+branch: codex/step-86-outbox-source-lifecycle-load-tests
+objective: >
+  Add executable load tests for outbox queue recovery and source lifecycle
+  retraction queue batching, aligned with the documented PFOS v3.2.4 load-test
+  thresholds without weakening existing assertions or changing application
+  behavior.
+commit_message: Add outbox and source lifecycle load tests
+validation_commands:
+  - make test PYTEST="python3 -m pytest tests/load/test_outbox_queue_load.py tests/load/test_source_retraction_queue_load.py -vv"
+  - make validate
+files_expected:
+  - tests/load/test_outbox_queue_load.py
+  - tests/load/test_source_retraction_queue_load.py
+  - .pfos/baby_steps/086_outbox_source_lifecycle_load_tests.yaml
