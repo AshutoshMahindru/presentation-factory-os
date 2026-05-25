@@ -1,0 +1,21 @@
+step_id: 92
+name: system_db_psycopg_pool
+branch: codex/step-92-system-db-psycopg-pool
+objective: >
+  Stabilize PFOS Postgres connection handling by introducing a shared
+  system/db.py helper for DATABASE_URL and POSTGRES_URL resolution, psycopg
+  connection access, transaction context management, optional pool lifecycle,
+  and repository-compatible execution without changing schema, API behavior, or
+  repository public interfaces.
+commit_message: Add shared psycopg DB helper
+validation_commands:
+  - python3 -m compileall system api jobs
+  - python3 -m pytest tests/unit/test_db.py -vv
+  - python3 -m pytest tests/unit/test_outbox_repository.py -vv
+  - python3 -m pytest tests/unit/test_source_lifecycle_event_repository.py -vv
+  - make validate
+files_expected:
+  - system/db.py
+  - tests/unit/test_db.py
+  - docs/40_DB_Connection_Strategy.md
+  - .pfos/baby_steps/092_system_db_psycopg_pool.yaml
