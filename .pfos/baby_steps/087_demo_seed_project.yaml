@@ -1,0 +1,24 @@
+step_id: 87
+name: demo_seed_project
+branch: codex/step-87-demo-seed-project
+objective: >
+  Add a deterministic canonical demo seed project for local validation and
+  operator demos, derived from the Series A IC Deck - Mobile Pizza Platform API
+  example and loaded only through existing validation surfaces.
+constraints:
+  - Keep baby-step YAML metadata-only.
+  - Do not change database schema.
+  - Do not modify Docker.
+  - Do not weaken tests or validation gates.
+  - Do not fake successful export.
+commit_message: Add canonical demo seed project
+validation_commands:
+  - python3 -m compileall scripts api system deck_builder financial_model
+  - python3 -m pytest tests/unit/test_seed_demo_project.py -vv
+  - make validate
+files_expected:
+  - scripts/seed_demo_project.py
+  - tests/fixtures/demo_project.json
+  - docs/36_Demo_Seed_Project.md
+  - tests/unit/test_seed_demo_project.py
+  - .pfos/baby_steps/087_demo_seed_project.yaml
