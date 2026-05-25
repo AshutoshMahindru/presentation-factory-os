@@ -1,4 +1,4 @@
-.PHONY: compile test no-agent-db-imports validate validate-json validate-yaml validate-sql-drift smoke-source-lifecycle-outbox docker-ps docker-up docker-down docker-reset-dev docker-doctor validate-live validate-sql-live validate-cypher-live
+.PHONY: compile test no-agent-db-imports codegen-phase-enums validate validate-json validate-yaml validate-sql-drift validate-phase-enums smoke-source-lifecycle-outbox docker-ps docker-up docker-down docker-reset-dev docker-doctor validate-live validate-sql-live validate-cypher-live
 
 PYTHON ?= python3
 PYTEST ?= $(PYTHON) -m pytest
@@ -19,6 +19,12 @@ test:
 no-agent-db-imports:
 	$(PYTHON) scripts/check_no_agent_db_imports.py
 
+codegen-phase-enums:
+	$(PYTHON) scripts/generate_phase_enums.py
+
+validate-phase-enums:
+	$(PYTHON) scripts/generate_phase_enums.py --check
+
 smoke-source-lifecycle-outbox:
 	$(PYTHON) scripts/source_lifecycle_outbox_smoke.py
 
@@ -31,7 +37,7 @@ validate-yaml:
 validate-sql-drift:
 	$(PYTHON) scripts/check_postgres_schema_drift.py
 
-validate: compile validate-json validate-yaml validate-sql-drift no-agent-db-imports test
+validate: compile validate-json validate-yaml validate-sql-drift validate-phase-enums no-agent-db-imports test
 
 docker-ps:
 	$(DOCKER_COMPOSE) ps
