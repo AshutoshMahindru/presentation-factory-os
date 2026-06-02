@@ -63,3 +63,27 @@ class LLMClient:
         with urllib.request.urlopen(req, timeout=60) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             return data["choices"][0]["message"]["content"]
+
+
+    def create_thesis_version(self, project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        url = f"{self.base_url}/projects/{project_id}/thesis-versions"
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    def get_current_thesis(self, project_id: str) -> dict[str, Any] | None:
+        url = f"{self.base_url}/projects/{project_id}/thesis-versions/current"
+        req = urllib.request.Request(url, headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return None
+            raise
+

@@ -405,3 +405,60 @@ async def create_project_source(
     )
     return {"id": str(row.id), "status": "created", "uri": req.uri}
 
+
+# --- Step 105: Thesis version endpoints ---
+
+class ThesisVersionCreateRequest(BaseModel):
+    thesis_statement: str
+    pillars: list[dict[str, Any]]
+
+class ThesisPillarCreate(BaseModel):
+    pillar_index: int
+    pillar_type: str
+    statement: str
+
+@app.post("/projects/{project_id}/thesis-versions")
+async def create_project_thesis_version(
+    project_id: str,
+    req: ThesisVersionCreateRequest,
+) -> dict[str, Any]:
+    from system.thesis_repository import ThesisRepository
+    repo = ThesisRepository(db_pool)  # type: ignore[name-defined]
+    version = repo.create_thesis_version(project_id, 1, req.thesis_statement)
+
+    for p in req.pillars:
+        repo.create_pillar(
+            version.id,
+            p["pillar_index"],
+            p["pillar_type"],
+            p["statement"],
+        )
+
+    return {"id": str(version.id), "version_number": version.version_number}
+
+@app.get("/projects/{project_id}/thesis-versions/current")
+async def get_current_thesis_version(project_id: str) -> dict[str, Any] | None:
+    from system.thesis_repository import ThesisRepository
+    repo = ThesisRepository(db_pool)  # type: ignore[name-defined]
+    version = repo.get_latest_thesis(project_id)
+    if not version:
+        return None
+
+    pillars = repo.get_pillars(version.id)
+    return {
+        "id": str(version.id),
+        "version_number": version.version_number,
+        "thesis_statement": version.thesis_statement,
+        "convergence_score": version.convergence_score,
+        "pillars": [
+            {
+                "id": str(p.id),
+                "pillar_index": p.pillar_index,
+                "pillar_type": p.pillar_type,
+                "statement": p.statement,
+                "stress_status": p.stress_status,
+            }
+            for p in pillars
+        ],
+    }
+

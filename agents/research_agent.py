@@ -30,7 +30,51 @@ SOURCE_PROPOSAL_SCHEMA: dict[str, Any] = {
 }
 
 
-class ResearchAgent(BaseAgent):
+class ThesisInitiationMixin:
+    """Mixin for ResearchAgent thesis generation."""
+
+    def generate_thesis_v0(self, project_id: str, topic: str, selected_persona: dict | None = None) -> dict[str, Any]:
+        prompt = self._build_thesis_prompt(topic, selected_persona)
+        raw = self.llm.complete(prompt, temperature=0.0, max_tokens=2500)
+
+        json_str = self._extract_json(raw)
+        data = json.loads(json_str)
+        self._validate_json_schema(data, THESIS_SCHEMA)
+
+        if len(data["pillars"]) > 10:
+            raise ValueError(f"Too many pillars: {len(data['pillars'])} (max 10)")
+        if len(set(p["statement"] for p in data["pillars"])) != len(data["pillars"]):
+            raise ValueError("Duplicate pillar statements detected")
+
+        # Submit through workflow API
+        payload = {
+            "project_id": project_id,
+            "thesis_statement": data["thesis_statement"],
+            "pillars": data["pillars"],
+        }
+        result = self.workflow.create_thesis_version(project_id, payload)
+        return {"thesis_version_id": result["id"], "pillars_count": len(data["pillars"])}
+
+    @staticmethod
+    def _build_thesis_prompt(topic: str, persona: dict | None) -> str:
+        persona_hint = ""
+        if persona:
+            persona_hint = (
+                f"\nAudience: {persona.get('title', 'General')}. "
+                f"Time budget: {persona.get('time_budget_minutes', 10)} minutes. "
+                f"Tone: {persona.get('tone', 'neutral')}."
+            )
+        return (
+            f"Generate an investment thesis on: {topic}{persona_hint}\n"
+            f"Return exactly one JSON object with:\n"
+            f"  thesis_statement: concise declarative sentence (max 500 chars)\n"
+            f"  pillars: array of 3-10 supporting arguments, each with pillar_index, pillar_type, statement\n"
+            f"Pillar types: claim, data, objection, narrative, financial.\n"
+            f"No markdown, only raw JSON."
+        )
+
+
+class ResearchAgent(BaseAgent, ThesisInitiationMixin):
     def __init__(
         self,
         workflow_client: WorkflowClient | None = None,
@@ -90,3 +134,29 @@ class ResearchAgent(BaseAgent):
     def _is_valid_uri(uri: str) -> bool:
         parsed = urlparse(uri)
         return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+
+
+# --- Step 105: Thesis Initiation ---
+
+THESIS_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "thesis_statement": {"type": "string", "maxLength": 500},
+        "pillars": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "pillar_index": {"type": "integer"},
+                    "pillar_type": {"type": "string", "enum": ["claim", "data", "objection", "narrative", "financial"]},
+                    "statement": {"type": "string", "maxLength": 300}
+                },
+                "required": ["pillar_index", "pillar_type", "statement"]
+            }
+        }
+    },
+    "required": ["thesis_statement", "pillars"]
+}
+
+

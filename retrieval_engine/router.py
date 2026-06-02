@@ -132,15 +132,13 @@ class RetrievalRouter:
 # --- Step 104: Source Register retrieval modes ---
 
 def classify_source_query(query_text: str) -> str:
-    """Classify a query as source_discovery or source_lifecycle."""
     q = query_text.lower()
-    if any(w in q for w in ["source", "find", "discover", "register", "lookup"]):
-        return "source_discovery"
+    # Lifecycle keywords take precedence (e.g. "retract source" -> lifecycle)
     if any(w in q for w in ["retract", "invalidate", "status", "lifecycle", "archive"]):
         return "source_lifecycle"
+    if any(w in q for w in ["source", "find", "discover", "register", "lookup"]):
+        return "source_discovery"
     return "general"
-
-
 def route_to_source_register(query_text: str, payload: dict) -> dict:
     """Route source-oriented queries to structured retriever over source_register."""
     from retrieval_engine.structured_retriever import search_source_register
