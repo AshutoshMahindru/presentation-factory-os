@@ -6,6 +6,7 @@ from typing import Any
 from uuid import UUID
 
 from agents.base_agent import BaseAgent, WorkflowClient, LLMClient
+from evidence_graph.evidence_linker import DeepReadResult
 
 
 SOURCE_PROPOSAL_SCHEMA: dict[str, Any] = {
@@ -163,7 +164,51 @@ class ResearchLoopMixin:
         self.workflow._post(f"/research-loops/{loop_id}/finalize", payload)
 
 
-class ResearchAgent(BaseAgent, ThesisInitiationMixin, ResearchLoopMixin):
+class DeepReadMixin:
+    """Mixin for ResearchAgent thesis-aware source deep-read.
+
+    Step 107: for a given project + thesis version, resolve each pillar
+    to its supporting active sources via the Neo4j evidence graph and
+    write the result back to source_register.search_coverage in Postgres.
+
+    The agent does NOT hold a Postgres pool or Cypher runner directly —
+    per the project's no-agent-db-imports rule. Instead it calls the
+    workflow API endpoint, which owns the cross-store integration.
+    """
+
+    def deep_read_sources_for_pillars(
+        self,
+        project_id: str,
+        thesis_version_id: str,
+    ) -> DeepReadResult:
+        # The workflow endpoint is the integration point: it owns the
+        # Postgres pool and the Neo4j driver. The agent is a thin client.
+        response = self.workflow._post(  # type: ignore[attr-defined]
+            f"/projects/{project_id}/research/deep-read-sources",
+            {"thesis_version_id": thesis_version_id},
+        )
+        return DeepReadResult(
+            project_id=response.get("project_id", project_id),
+            thesis_version_id=response.get("thesis_version_id", thesis_version_id),
+            pillar_links=tuple(
+                _link_from_api(item) for item in response.get("pillar_links", [])
+            ),
+        )
+
+
+def _link_from_api(item: dict[str, Any]):
+    """Reconstruct a PillarLink from the workflow API response shape."""
+    from evidence_graph.evidence_linker import PillarLink
+    return PillarLink(
+        pillar_id=str(item["pillar_id"]),
+        pillar_index=int(item["pillar_index"]),
+        pillar_type=str(item["pillar_type"]),
+        statement=str(item["statement"]),
+        source_ids=tuple(str(s) for s in item.get("source_ids", [])),
+    )
+
+
+class ResearchAgent(BaseAgent, ThesisInitiationMixin, ResearchLoopMixin, DeepReadMixin):
     def __init__(
         self,
         workflow_client: WorkflowClient | None = None,

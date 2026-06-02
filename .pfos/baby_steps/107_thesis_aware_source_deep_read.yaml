@@ -1,0 +1,27 @@
+step_id: 107
+name: thesis_aware_source_deep_read
+branch: step-107-thesis-deep-read
+objective: >
+  Link each thesis pillar to its supporting claims in Neo4j, resolve those
+  claims to active sources, and write the result back to
+  source_register.search_coverage in Postgres. Establish a Pillar node in
+  Neo4j with an explicit Claim-[:SUPPORTS_PILLAR]->Pillar edge so claim-to-pillar
+  assignment is auditable rather than inferred. The ResearchAgent deep_read
+  step delegates cross-store work to the workflow API endpoint, honoring the
+  project's no-agent-db-imports rule.
+commit_message: "step-107: Add thesis-aware source deep-read via evidence_linker"
+validation_commands:
+  - python3 -m compileall agents evidence_graph
+  - python3 -m pytest tests/unit/test_evidence_graph_pillar_linkage.py -vv
+  - python3 -m pytest tests/unit/test_source_register_coverage.py -vv
+  - python3 -m pytest tests/unit/test_research_agent_deep_read.py -vv
+  - python3 -m pytest tests/unit/test_research_agent.py -vv
+  - make no-agent-db-imports
+files_expected:
+  - evidence_graph/evidence_linker.py
+  - tests/unit/test_evidence_graph_pillar_linkage.py
+  - tests/unit/test_source_register_coverage.py
+  - tests/unit/test_research_agent_deep_read.py
+  - agents/research_agent.py
+  - infra/neo4j/constraints.cypher
+  - .pfos/baby_steps/107_thesis_aware_source_deep_read.yaml

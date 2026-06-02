@@ -31,6 +31,17 @@ class WorkflowClient:
     def __init__(self, base_url: str = "http://localhost:8000") -> None:
         self.base_url = base_url.rstrip("/")
 
+    def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        url = f"{self.base_url}{path}"
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
     def create_source(self, project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         url = f"{self.base_url}/projects/{project_id}/sources"
         req = urllib.request.Request(

@@ -474,6 +474,35 @@ class ResearchLoopFinalizeRequest(BaseModel):
     sources_discovered_count: int
     status: str  # running | converged | failed | force_stopped
 
+class ResearchDeepReadRequest(BaseModel):
+    thesis_version_id: str
+
+
+# --- Step 107: thesis-aware source deep-read ---
+
+def _neo4j_run_cypher(query: str, params: dict[str, Any]) -> list[dict[str, Any]]:
+    """Execute a cypher query against the project Neo4j instance and return
+    rows as a list of dicts.
+
+    Mirrors the env-driven config used by jobs/outbox_worker.py so the
+    workflow and the outbox share the same connection.
+    """
+    import os
+    from neo4j import GraphDatabase
+
+    uri = os.environ.get("NEO4J_URI", "bolt://localhost:7687")
+    user = os.environ.get("NEO4J_USER", "neo4j")
+    password = os.environ.get("NEO4J_PASSWORD") or "pfos_neo4j_password"
+    database = os.environ.get("NEO4J_DATABASE") or None
+
+    driver = GraphDatabase.driver(uri, auth=(user, password))
+    try:
+        with driver.session(database=database) as session:
+            result = session.run(query, **params)
+            return [dict(record) for record in result]
+    finally:
+        driver.close()
+
 @app.post("/projects/{project_id}/research-loops/start")
 async def start_research_loop(
     project_id: str,
@@ -507,5 +536,44 @@ async def finalize_research_loop(
         "id": loop_id,
         "status": req.status,
         "convergence_delta": req.convergence_delta,
+    }
+
+
+@app.post("/projects/{project_id}/research/deep-read-sources")
+async def deep_read_sources_for_pillars(
+    project_id: str,
+    req: ResearchDeepReadRequest,
+) -> dict[str, Any]:
+    """Step 107: thesis-aware source deep-read.
+
+    For a given project + thesis version, resolve each pillar to its
+    supporting active sources via the Neo4j evidence graph and write the
+    result back to source_register.search_coverage in Postgres. Returns
+    the per-pillar linkage so the caller can audit coverage gaps.
+    """
+    from evidence_graph.evidence_linker import deep_read_sources_for_pillars
+
+    result = deep_read_sources_for_pillars(
+        db_pool,  # type: ignore[name-defined]
+        _neo4j_run_cypher,
+        project_id=project_id,
+        thesis_version_id=req.thesis_version_id,
+    )
+
+    return {
+        "project_id": result.project_id,
+        "thesis_version_id": result.thesis_version_id,
+        "pillar_links": [
+            {
+                "pillar_id": link.pillar_id,
+                "pillar_index": link.pillar_index,
+                "pillar_type": link.pillar_type,
+                "statement": link.statement,
+                "source_ids": list(link.source_ids),
+            }
+            for link in result.pillar_links
+        ],
+        "total_sources": result.total_sources(),
+        "pillars_with_no_sources": list(result.pillar_ids_with_no_sources()),
     }
 
