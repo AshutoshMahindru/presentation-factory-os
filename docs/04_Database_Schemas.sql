@@ -62,6 +62,23 @@ CREATE INDEX IF NOT EXISTS idx_projects_blocked ON projects(blocked);
 CREATE INDEX IF NOT EXISTS idx_projects_audience_profile_gin ON projects USING GIN (audience_profile);
 CREATE INDEX IF NOT EXISTS idx_projects_objection_preemption_map_gin ON projects USING GIN (objection_preemption_map);
 
+CREATE TABLE IF NOT EXISTS intake_chat_messages (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  turn_index INTEGER NOT NULL CHECK (turn_index >= 1),
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system', 'tool')),
+  content TEXT NOT NULL,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  actor_email TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(project_id, turn_index),
+  CHECK (length(trim(content)) > 0),
+  CHECK (jsonb_typeof(metadata) = 'object')
+);
+
+CREATE INDEX IF NOT EXISTS idx_intake_chat_project_turn ON intake_chat_messages(project_id, turn_index);
+CREATE INDEX IF NOT EXISTS idx_intake_chat_project_created ON intake_chat_messages(project_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS phase_transitions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
