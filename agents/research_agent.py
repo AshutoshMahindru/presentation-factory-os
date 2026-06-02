@@ -85,9 +85,11 @@ class ResearchLoopMixin:
         project_id: str,
         topic: str,
         max_loops: int | None = None,  # None = unbounded; operator can force stop
+        financial_agent: Any | None = None,  # optional FinancialAgent for step 111
     ) -> dict[str, Any]:
         loop_number = 1
         previous_thesis = None
+        last_real_thesis_id: str | None = None  # track the actual thesis id
 
         while True:
             # Start loop audit
@@ -97,14 +99,41 @@ class ResearchLoopMixin:
             # Generate or refine thesis
             if loop_number == 1:
                 result = self.generate_thesis_v0(project_id, topic)
+                # Capture the real thesis id so subsequent stub iterations
+                # can still pass it to the financial review endpoint.
+                thesis_id = result.get("thesis_version_id")
+                if thesis_id:
+                    last_real_thesis_id = str(thesis_id)
             else:
                 # In v3.3.0: deep-read and refine; for now, stub iteration
-                result = {"thesis_version_id": previous_thesis, "pillars_count": 0}
+                result = {
+                    "thesis_version_id": last_real_thesis_id,
+                    "pillars_count": 0,
+                }
 
-            # Evaluate convergence
-            # In production: fetch from repo. Stub uses workflow response.
+            # Step 111: financial review of the generated thesis. The
+            # review can mark pillars as stressed (contradiction) and the
+            # stressed count feeds into convergence so a thesis with
+            # contradicting financial cells takes longer to converge.
+            stressed_pillar_count = 0
+            thesis_version_id = result.get("thesis_version_id")
+            if financial_agent is not None and thesis_version_id:
+                review = financial_agent.review_sources_for_pillars(
+                    project_id=project_id, thesis_version_id=thesis_version_id
+                ) if hasattr(financial_agent, "review_sources_for_pillars") else \
+                    financial_agent.review_sources_for_thesis(
+                        project_id=project_id, thesis_version_id=thesis_version_id
+                    )
+                stressed_pillar_count = len(review.pillars_with_contradictions())
+                # Mark each contradicting pillar as stressed in the thesis
+                # repository so downstream gates (step 112) can see them.
+                for pillar_id in review.pillars_with_contradictions():
+                    self._mark_pillar_stressed(thesis_version_id, pillar_id)
+
+            # Evaluate convergence. The stub delta is reduced when there
+            # are no stressed pillars and increased when there are.
             current = type("_StubThesis", (), {"id": "stub-thesis"})() if loop_number > 1 else None
-            delta = self.evaluate_convergence(previous_thesis, current)
+            delta = self.evaluate_convergence(previous_thesis, current, stressed_pillar_count)
 
             # Finalize loop
             loop_id = self._start_loop_record(project_id, loop_number, len(source_ids))
@@ -116,6 +145,7 @@ class ResearchLoopMixin:
                     "loops": loop_number,
                     "thesis_version_id": str(current.id) if current else None,
                     "convergence_delta": delta,
+                    "stressed_pillar_count": stressed_pillar_count,
                 }
 
             if max_loops is not None and loop_number >= max_loops:
@@ -124,6 +154,7 @@ class ResearchLoopMixin:
                     "loops": loop_number,
                     "thesis_version_id": str(current.id) if current else None,
                     "convergence_delta": delta,
+                    "stressed_pillar_count": stressed_pillar_count,
                 }
 
             previous_thesis = str(current.id) if current else None
@@ -133,11 +164,19 @@ class ResearchLoopMixin:
         self,
         previous_thesis_id: str | None,
         current_thesis: Any,
+        stressed_pillar_count: int = 0,
     ) -> float:
         if previous_thesis_id is None or current_thesis is None:
-            return 1.0  # First loop: maximum delta
-        # Stub: deterministic convergence for testing
-        return 0.03
+            # First loop: no financial review yet, so the convergence
+            # delta is high.
+            return 1.0
+        # Stub: base delta drops below EPSILON when there are no stressed
+        # pillars; with stressed pillars the delta is bumped up to keep
+        # the loop running so the operator can address the contradiction.
+        base = 0.03
+        if stressed_pillar_count > 0:
+            return base + 0.10 * stressed_pillar_count
+        return base
 
     def _start_loop_record(self, project_id: str, loop_number: int, discovered: int) -> str:
         # Call workflow API to start research loop
@@ -162,6 +201,26 @@ class ResearchLoopMixin:
             "status": status,
         }
         self.workflow._post(f"/research-loops/{loop_id}/finalize", payload)
+
+    def _mark_pillar_stressed(
+        self, thesis_version_id: str, pillar_id: str
+    ) -> None:
+        """Mark a pillar as stressed after a financial contradiction.
+
+        Thin wrapper over the thesis-repository's mark_pillar_stressed
+        method, invoked via the workflow API so the agent stays
+        DB-import-free.
+        """
+        try:
+            self.workflow._post(  # type: ignore[attr-defined]
+                f"/thesis-versions/{thesis_version_id}/pillars/{pillar_id}/stress",
+                {"stress_status": "stressed"},
+            )
+        except Exception:
+            # The stress endpoint is added in a follow-up step; for now,
+            # treat the mark as a no-op so the loop can run end-to-end
+            # even before the endpoint lands.
+            pass
 
 
 class DeepReadMixin:

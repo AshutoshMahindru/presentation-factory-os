@@ -1,0 +1,29 @@
+step_id: 111
+name: financial_agent_bidirectional_source_review
+branch: step-111-financial-agent-review
+objective: >
+  Add FinancialAgent for bidirectional thesis ↔ financial-cell review.
+  review_sources_for_thesis fetches pillars + linked canonical cells via
+  a new workflow endpoint, runs a deterministic quantitative-contradiction
+  check against each cell, then asks the LLM for a per-pillar verdict.
+  _check_quantitative_contradiction is the deterministic core: it
+  scans a claim statement for directional keywords (grow/decline/etc.) and
+  decides whether the cell's sign contradicts the claim. ResearchAgent's
+  run_research_loop now takes an optional financial_agent parameter; when
+  present, it integrates the review and bumps the convergence delta by
+  0.10 per stressed pillar so a thesis with contradicting cells keeps
+  looping until the operator resolves the issue.
+commit_message: "step-111: Add FinancialAgent bidirectional review and integrate with research loop"
+validation_commands:
+  - python3 -m compileall agents
+  - python3 -m pytest tests/unit/test_financial_agent_review.py -vv
+  - python3 -m pytest tests/unit/test_research_loop_with_financial.py -vv
+  - python3 -m pytest tests/unit/test_research_agent.py -vv
+  - make no-agent-db-imports
+files_expected:
+  - agents/financial_agent.py
+  - agents/research_agent.py
+  - api/workflow.py
+  - tests/unit/test_financial_agent_review.py
+  - tests/unit/test_research_loop_with_financial.py
+  - .pfos/baby_steps/111_financial_agent_bidirectional_source_review.yaml

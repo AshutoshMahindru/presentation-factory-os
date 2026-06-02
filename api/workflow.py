@@ -577,3 +577,60 @@ async def deep_read_sources_for_pillars(
         "pillars_with_no_sources": list(result.pillar_ids_with_no_sources()),
     }
 
+
+# --- Step 111: financial review context ---
+
+
+@app.post(
+    "/projects/{project_id}/thesis-versions/{thesis_version_id}/financial-review-context"
+)
+async def financial_review_context(
+    project_id: str,
+    thesis_version_id: str,
+) -> dict[str, Any]:
+    """Read the pillars of a thesis version plus the canonical financial
+    cells linked to each pillar. Returned as a single payload the
+    FinancialAgent can ingest for review."""
+    from uuid import UUID
+
+    from system.financial_repository import FinancialRepository
+    from system.thesis_repository import ThesisRepository
+
+    thesis_repo = ThesisRepository(db_pool)  # type: ignore[name-defined]
+    fin_repo = FinancialRepository(db_pool)  # type: ignore[name-defined]
+
+    pillars = thesis_repo.get_pillars(UUID(thesis_version_id))
+    cells_by_pillar: dict[str, list[dict[str, Any]]] = {}
+    for p in pillars:
+        cells = fin_repo.list_cells_for_pillar(p.id)
+        cells_by_pillar[str(p.id)] = [
+            {
+                "id": str(c.id),
+                "cell_ref": c.cell_ref,
+                "label": c.label,
+                "value": float(c.value),
+                "unit": c.unit,
+                "scenario": c.scenario,
+                "formula": c.formula,
+                "artifact_status": c.artifact_status,
+            }
+            for c in cells
+            if c.artifact_status == "active"
+        ]
+
+    return {
+        "project_id": project_id,
+        "thesis_version_id": thesis_version_id,
+        "pillars": [
+            {
+                "id": str(p.id),
+                "pillar_index": p.pillar_index,
+                "pillar_type": p.pillar_type,
+                "statement": p.statement,
+                "stress_status": p.stress_status,
+            }
+            for p in pillars
+        ],
+        "cells_by_pillar": cells_by_pillar,
+    }
+
