@@ -334,6 +334,51 @@ CREATE TABLE IF NOT EXISTS research_loops (
 CREATE INDEX IF NOT EXISTS idx_research_loops_project ON research_loops(project_id, loop_number);
 
 
+-- Step 108: Sandbox Financial Spec Schema
+
+CREATE TABLE IF NOT EXISTS financial_model_specs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    thesis_pillar_id UUID REFERENCES thesis_pillars(id) ON DELETE SET NULL,
+    name TEXT NOT NULL,
+    spec_json JSONB NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'compiled', 'validated', 'failed', 'promoted', 'superseded', 'archived')),
+    validation_errors JSONB NOT NULL DEFAULT '[]',
+    promoted_to JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- At most one active sandbox spec per pillar. 'active' for the sandbox
+-- means status IN ('draft', 'compiled', 'validated'); failed/superseded/
+-- archived/promoted rows are historical and don't conflict.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_financial_model_specs_active_per_pillar
+    ON financial_model_specs (thesis_pillar_id)
+    WHERE thesis_pillar_id IS NOT NULL
+      AND status IN ('draft', 'compiled', 'validated');
+
+CREATE INDEX IF NOT EXISTS idx_financial_model_specs_project
+    ON financial_model_specs (project_id, status);
+CREATE INDEX IF NOT EXISTS idx_financial_model_specs_pillar
+    ON financial_model_specs (thesis_pillar_id);
+
+CREATE TABLE IF NOT EXISTS financial_scenarios (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    spec_id UUID NOT NULL REFERENCES financial_model_specs(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    scenario_json JSONB NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'active', 'archived')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(spec_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_financial_scenarios_spec
+    ON financial_scenarios (spec_id, status);
+
+
 -- Step 101: Source Register & Thesis Registry Schema
 
 CREATE TABLE IF NOT EXISTS source_register (
@@ -387,3 +432,48 @@ CREATE TABLE IF NOT EXISTS research_loops (
 );
 
 CREATE INDEX IF NOT EXISTS idx_research_loops_project ON research_loops(project_id, loop_number);
+
+
+-- Step 108: Sandbox Financial Spec Schema
+
+CREATE TABLE IF NOT EXISTS financial_model_specs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    thesis_pillar_id UUID REFERENCES thesis_pillars(id) ON DELETE SET NULL,
+    name TEXT NOT NULL,
+    spec_json JSONB NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'compiled', 'validated', 'failed', 'promoted', 'superseded', 'archived')),
+    validation_errors JSONB NOT NULL DEFAULT '[]',
+    promoted_to JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- At most one active sandbox spec per pillar. 'active' for the sandbox
+-- means status IN ('draft', 'compiled', 'validated'); failed/superseded/
+-- archived/promoted rows are historical and don't conflict.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_financial_model_specs_active_per_pillar
+    ON financial_model_specs (thesis_pillar_id)
+    WHERE thesis_pillar_id IS NOT NULL
+      AND status IN ('draft', 'compiled', 'validated');
+
+CREATE INDEX IF NOT EXISTS idx_financial_model_specs_project
+    ON financial_model_specs (project_id, status);
+CREATE INDEX IF NOT EXISTS idx_financial_model_specs_pillar
+    ON financial_model_specs (thesis_pillar_id);
+
+CREATE TABLE IF NOT EXISTS financial_scenarios (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    spec_id UUID NOT NULL REFERENCES financial_model_specs(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    scenario_json JSONB NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'active', 'archived')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(spec_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_financial_scenarios_spec
+    ON financial_scenarios (spec_id, status);
