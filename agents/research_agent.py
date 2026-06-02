@@ -74,7 +74,96 @@ class ThesisInitiationMixin:
         )
 
 
-class ResearchAgent(BaseAgent, ThesisInitiationMixin):
+class ResearchLoopMixin:
+    """Mixin for ResearchAgent unbounded research loop."""
+
+    EPSILON = 0.05  # convergence threshold
+
+    def run_research_loop(
+        self,
+        project_id: str,
+        topic: str,
+        max_loops: int | None = None,  # None = unbounded; operator can force stop
+    ) -> dict[str, Any]:
+        loop_number = 1
+        previous_thesis = None
+
+        while True:
+            # Start loop audit
+            # Discover sources
+            source_ids = self.discover_and_register_sources(project_id, topic, max_sources=10)
+
+            # Generate or refine thesis
+            if loop_number == 1:
+                result = self.generate_thesis_v0(project_id, topic)
+            else:
+                # In v3.3.0: deep-read and refine; for now, stub iteration
+                result = {"thesis_version_id": previous_thesis, "pillars_count": 0}
+
+            # Evaluate convergence
+            # In production: fetch from repo. Stub uses workflow response.
+            current = type("_StubThesis", (), {"id": "stub-thesis"})() if loop_number > 1 else None
+            delta = self.evaluate_convergence(previous_thesis, current)
+
+            # Finalize loop
+            loop_id = self._start_loop_record(project_id, loop_number, len(source_ids))
+            self._finalize_loop_record(loop_id, delta, len(source_ids), "converged" if delta < self.EPSILON else "running")
+
+            if delta < self.EPSILON:
+                return {
+                    "status": "converged",
+                    "loops": loop_number,
+                    "thesis_version_id": str(current.id) if current else None,
+                    "convergence_delta": delta,
+                }
+
+            if max_loops is not None and loop_number >= max_loops:
+                return {
+                    "status": "max_loops_reached",
+                    "loops": loop_number,
+                    "thesis_version_id": str(current.id) if current else None,
+                    "convergence_delta": delta,
+                }
+
+            previous_thesis = str(current.id) if current else None
+            loop_number += 1
+
+    def evaluate_convergence(
+        self,
+        previous_thesis_id: str | None,
+        current_thesis: Any,
+    ) -> float:
+        if previous_thesis_id is None or current_thesis is None:
+            return 1.0  # First loop: maximum delta
+        # Stub: deterministic convergence for testing
+        return 0.03
+
+    def _start_loop_record(self, project_id: str, loop_number: int, discovered: int) -> str:
+        # Call workflow API to start research loop
+        payload = {
+            "project_id": project_id,
+            "loop_number": loop_number,
+            "sources_discovered_count": discovered,
+        }
+        result = self.workflow._post("/research-loops/start", payload)
+        return result.get("id", "loop-stub")
+
+    def _finalize_loop_record(
+        self,
+        loop_id: str,
+        delta: float,
+        discovered: int,
+        status: str,
+    ) -> None:
+        payload = {
+            "convergence_delta": delta,
+            "sources_discovered_count": discovered,
+            "status": status,
+        }
+        self.workflow._post(f"/research-loops/{loop_id}/finalize", payload)
+
+
+class ResearchAgent(BaseAgent, ThesisInitiationMixin, ResearchLoopMixin):
     def __init__(
         self,
         workflow_client: WorkflowClient | None = None,
@@ -159,4 +248,6 @@ THESIS_SCHEMA: dict[str, Any] = {
     "required": ["thesis_statement", "pillars"]
 }
 
+
+# --- Step 106: Iterative Research Loop Core ---
 

@@ -65,6 +65,19 @@ class LLMClient:
             return data["choices"][0]["message"]["content"]
 
 
+
+    def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        url = f"{self.base_url}{path}"
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+
     def create_thesis_version(self, project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         url = f"{self.base_url}/projects/{project_id}/thesis-versions"
         req = urllib.request.Request(

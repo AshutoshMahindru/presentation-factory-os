@@ -462,3 +462,50 @@ async def get_current_thesis_version(project_id: str) -> dict[str, Any] | None:
         ],
     }
 
+
+# --- Step 106: Research Loop endpoints ---
+
+class ResearchLoopStartRequest(BaseModel):
+    loop_number: int
+    sources_discovered_count: int = 0
+
+class ResearchLoopFinalizeRequest(BaseModel):
+    convergence_delta: float
+    sources_discovered_count: int
+    status: str  # running | converged | failed | force_stopped
+
+@app.post("/projects/{project_id}/research-loops/start")
+async def start_research_loop(
+    project_id: str,
+    req: ResearchLoopStartRequest,
+) -> dict[str, Any]:
+    from system.thesis_repository import ThesisRepository
+    repo = ThesisRepository(db_pool)  # type: ignore[name-defined]
+    loop = repo.start_research_loop(project_id, req.loop_number)
+    return {
+        "id": str(loop.id),
+        "loop_number": loop.loop_number,
+        "status": loop.status,
+    }
+
+@app.post("/projects/{project_id}/research-loops/{loop_id}/finalize")
+async def finalize_research_loop(
+    project_id: str,
+    loop_id: str,
+    req: ResearchLoopFinalizeRequest,
+) -> dict[str, Any]:
+    from system.thesis_repository import ThesisRepository
+    from uuid import UUID
+    repo = ThesisRepository(db_pool)  # type: ignore[name-defined]
+    repo.finalize_research_loop(
+        UUID(loop_id),
+        req.convergence_delta,
+        req.sources_discovered_count,
+        req.status,
+    )
+    return {
+        "id": loop_id,
+        "status": req.status,
+        "convergence_delta": req.convergence_delta,
+    }
+
