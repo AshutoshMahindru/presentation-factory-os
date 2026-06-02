@@ -127,3 +127,36 @@ class RetrievalRouter:
             "gaps": gaps,
             "recommended_next_action": decision.recommended_next_action,
         }
+
+
+# --- Step 104: Source Register retrieval modes ---
+
+def classify_source_query(query_text: str) -> str:
+    """Classify a query as source_discovery or source_lifecycle."""
+    q = query_text.lower()
+    if any(w in q for w in ["source", "find", "discover", "register", "lookup"]):
+        return "source_discovery"
+    if any(w in q for w in ["retract", "invalidate", "status", "lifecycle", "archive"]):
+        return "source_lifecycle"
+    return "general"
+
+
+def route_to_source_register(query_text: str, payload: dict) -> dict:
+    """Route source-oriented queries to structured retriever over source_register."""
+    from retrieval_engine.structured_retriever import search_source_register
+    classification = classify_source_query(query_text)
+    if classification == "source_discovery":
+        return search_source_register(
+            project_id=payload.get("project_id"),
+            query=payload.get("query"),
+            status="active",
+        )
+    elif classification == "source_lifecycle":
+        return search_source_register(
+            project_id=payload.get("project_id"),
+            query=payload.get("query"),
+            status=None,  # all statuses
+            include_retracted=True,
+        )
+    return {"error": "Unroutable source query", "classification": classification}
+
