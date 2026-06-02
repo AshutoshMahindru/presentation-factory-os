@@ -335,3 +335,271 @@ CREATE INDEX IF NOT EXISTS idx_retrieval_routing_low_conf ON retrieval_routing_l
 
 CREATE INDEX IF NOT EXISTS idx_rubric_scores_latest ON rubric_scores(project_id, phase, dimension, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_design_tokens_schema_id ON design_tokens(schema_id);
+
+
+-- Step 101: Source Register & Thesis Registry Schema
+
+CREATE TABLE IF NOT EXISTS source_register (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    uri TEXT NOT NULL,
+    title TEXT,
+    source_type TEXT NOT NULL CHECK (source_type IN ('pdf', 'web', 'document')),
+    content_hash TEXT NOT NULL,
+    quality_score JSONB NOT NULL DEFAULT '{}',
+    search_coverage JSONB NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'retracted', 'superseded')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(project_id, content_hash)
+);
+
+CREATE INDEX IF NOT EXISTS idx_source_register_project ON source_register(project_id, status);
+CREATE INDEX IF NOT EXISTS idx_source_register_hash ON source_register(project_id, content_hash);
+
+CREATE TABLE IF NOT EXISTS thesis_versions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+    version_number INTEGER NOT NULL,
+    thesis_statement TEXT NOT NULL,
+    convergence_score FLOAT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(project_id, version_number)
+);
+
+CREATE TABLE IF NOT EXISTS thesis_pillars (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    thesis_version_id UUID NOT NULL REFERENCES thesis_versions(id) ON DELETE CASCADE,
+    pillar_index INTEGER NOT NULL,
+    pillar_type TEXT NOT NULL CHECK (pillar_type IN ('claim', 'data', 'objection', 'narrative', 'financial')),
+    statement TEXT NOT NULL,
+    stress_status TEXT NOT NULL DEFAULT 'stable' CHECK (stress_status IN ('stable', 'stressed', 'retracted')),
+    UNIQUE(thesis_version_id, pillar_index)
+);
+
+CREATE TABLE IF NOT EXISTS research_loops (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    loop_number INTEGER NOT NULL,
+    convergence_delta FLOAT,
+    sources_discovered_count INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'converged', 'failed', 'force_stopped')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    completed_at TIMESTAMPTZ,
+    UNIQUE(project_id, loop_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_research_loops_project ON research_loops(project_id, loop_number);
+
+
+-- Step 108: Sandbox Financial Spec Schema
+
+CREATE TABLE IF NOT EXISTS financial_model_specs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    thesis_pillar_id UUID REFERENCES thesis_pillars(id) ON DELETE SET NULL,
+    name TEXT NOT NULL,
+    spec_json JSONB NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'compiled', 'validated', 'failed', 'promoted', 'superseded', 'archived')),
+    validation_errors JSONB NOT NULL DEFAULT '[]',
+    promoted_to JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- At most one active sandbox spec per pillar. 'active' for the sandbox
+-- means status IN ('draft', 'compiled', 'validated'); failed/superseded/
+-- archived/promoted rows are historical and don't conflict.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_financial_model_specs_active_per_pillar
+    ON financial_model_specs (thesis_pillar_id)
+    WHERE thesis_pillar_id IS NOT NULL
+      AND status IN ('draft', 'compiled', 'validated');
+
+CREATE INDEX IF NOT EXISTS idx_financial_model_specs_project
+    ON financial_model_specs (project_id, status);
+CREATE INDEX IF NOT EXISTS idx_financial_model_specs_pillar
+    ON financial_model_specs (thesis_pillar_id);
+
+CREATE TABLE IF NOT EXISTS financial_scenarios (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    spec_id UUID NOT NULL REFERENCES financial_model_specs(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    scenario_json JSONB NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'active', 'archived')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(spec_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_financial_scenarios_spec
+    ON financial_scenarios (spec_id, status);
+
+
+-- Step 110: Canonical Financial Repository (thesis-linked)
+
+CREATE TABLE IF NOT EXISTS financial_cells (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    thesis_pillar_id UUID REFERENCES thesis_pillars(id) ON DELETE SET NULL,
+    promoted_from_spec UUID REFERENCES financial_model_specs(id) ON DELETE SET NULL,
+    scenario TEXT NOT NULL,
+    cell_ref TEXT NOT NULL,
+    label TEXT NOT NULL,
+    value NUMERIC NOT NULL,
+    unit TEXT,
+    formula TEXT NOT NULL,
+    source_refs TEXT[] NOT NULL DEFAULT '{}',
+    ingestion_source_type TEXT NOT NULL DEFAULT 'manual_compiler',
+    parser_provenance JSONB NOT NULL DEFAULT '{}'::jsonb,
+    phase_scope_version INTEGER,
+    artifact_status TEXT NOT NULL DEFAULT 'active'
+        CHECK (artifact_status IN ('active', 'stale_due_to_retreat', 'archived', 'blocked')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (project_id, scenario, cell_ref)
+);
+
+CREATE INDEX IF NOT EXISTS idx_financial_cells_project
+    ON financial_cells (project_id, scenario);
+CREATE INDEX IF NOT EXISTS idx_financial_cells_pillar
+    ON financial_cells (thesis_pillar_id);
+CREATE INDEX IF NOT EXISTS idx_financial_cells_spec
+    ON financial_cells (promoted_from_spec);
+CREATE INDEX IF NOT EXISTS idx_financial_cells_status
+    ON financial_cells (project_id, artifact_status);
+
+
+-- Step 101: Source Register & Thesis Registry Schema
+
+CREATE TABLE IF NOT EXISTS source_register (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    uri TEXT NOT NULL,
+    title TEXT,
+    source_type TEXT NOT NULL CHECK (source_type IN ('pdf', 'web', 'document')),
+    content_hash TEXT NOT NULL,
+    quality_score JSONB NOT NULL DEFAULT '{}',
+    search_coverage JSONB NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'retracted', 'superseded')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(project_id, content_hash)
+);
+
+CREATE INDEX IF NOT EXISTS idx_source_register_project ON source_register(project_id, status);
+CREATE INDEX IF NOT EXISTS idx_source_register_hash ON source_register(project_id, content_hash);
+
+CREATE TABLE IF NOT EXISTS thesis_versions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+    version_number INTEGER NOT NULL,
+    thesis_statement TEXT NOT NULL,
+    convergence_score FLOAT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(project_id, version_number)
+);
+
+CREATE TABLE IF NOT EXISTS thesis_pillars (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    thesis_version_id UUID NOT NULL REFERENCES thesis_versions(id) ON DELETE CASCADE,
+    pillar_index INTEGER NOT NULL,
+    pillar_type TEXT NOT NULL CHECK (pillar_type IN ('claim', 'data', 'objection', 'narrative', 'financial')),
+    statement TEXT NOT NULL,
+    stress_status TEXT NOT NULL DEFAULT 'stable' CHECK (stress_status IN ('stable', 'stressed', 'retracted')),
+    UNIQUE(thesis_version_id, pillar_index)
+);
+
+CREATE TABLE IF NOT EXISTS research_loops (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    loop_number INTEGER NOT NULL,
+    convergence_delta FLOAT,
+    sources_discovered_count INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'converged', 'failed', 'force_stopped')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    completed_at TIMESTAMPTZ,
+    UNIQUE(project_id, loop_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_research_loops_project ON research_loops(project_id, loop_number);
+
+
+-- Step 108: Sandbox Financial Spec Schema
+
+CREATE TABLE IF NOT EXISTS financial_model_specs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    thesis_pillar_id UUID REFERENCES thesis_pillars(id) ON DELETE SET NULL,
+    name TEXT NOT NULL,
+    spec_json JSONB NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'compiled', 'validated', 'failed', 'promoted', 'superseded', 'archived')),
+    validation_errors JSONB NOT NULL DEFAULT '[]',
+    promoted_to JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- At most one active sandbox spec per pillar. 'active' for the sandbox
+-- means status IN ('draft', 'compiled', 'validated'); failed/superseded/
+-- archived/promoted rows are historical and don't conflict.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_financial_model_specs_active_per_pillar
+    ON financial_model_specs (thesis_pillar_id)
+    WHERE thesis_pillar_id IS NOT NULL
+      AND status IN ('draft', 'compiled', 'validated');
+
+CREATE INDEX IF NOT EXISTS idx_financial_model_specs_project
+    ON financial_model_specs (project_id, status);
+CREATE INDEX IF NOT EXISTS idx_financial_model_specs_pillar
+    ON financial_model_specs (thesis_pillar_id);
+
+CREATE TABLE IF NOT EXISTS financial_scenarios (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    spec_id UUID NOT NULL REFERENCES financial_model_specs(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    scenario_json JSONB NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'active', 'archived')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(spec_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_financial_scenarios_spec
+    ON financial_scenarios (spec_id, status);
+
+
+-- Step 110: Canonical Financial Repository (thesis-linked)
+
+CREATE TABLE IF NOT EXISTS financial_cells (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    thesis_pillar_id UUID REFERENCES thesis_pillars(id) ON DELETE SET NULL,
+    promoted_from_spec UUID REFERENCES financial_model_specs(id) ON DELETE SET NULL,
+    scenario TEXT NOT NULL,
+    cell_ref TEXT NOT NULL,
+    label TEXT NOT NULL,
+    value NUMERIC NOT NULL,
+    unit TEXT,
+    formula TEXT NOT NULL,
+    source_refs TEXT[] NOT NULL DEFAULT '{}',
+    ingestion_source_type TEXT NOT NULL DEFAULT 'manual_compiler',
+    parser_provenance JSONB NOT NULL DEFAULT '{}'::jsonb,
+    phase_scope_version INTEGER,
+    artifact_status TEXT NOT NULL DEFAULT 'active'
+        CHECK (artifact_status IN ('active', 'stale_due_to_retreat', 'archived', 'blocked')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (project_id, scenario, cell_ref)
+);
+
+CREATE INDEX IF NOT EXISTS idx_financial_cells_project
+    ON financial_cells (project_id, scenario);
+CREATE INDEX IF NOT EXISTS idx_financial_cells_pillar
+    ON financial_cells (thesis_pillar_id);
+CREATE INDEX IF NOT EXISTS idx_financial_cells_spec
+    ON financial_cells (promoted_from_spec);
+CREATE INDEX IF NOT EXISTS idx_financial_cells_status
+    ON financial_cells (project_id, artifact_status);

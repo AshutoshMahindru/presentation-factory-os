@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, is_dataclass
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
@@ -194,6 +194,33 @@ class IntakeChatTurnResponse(BaseModel):
     assistant_message: IntakeChatMessageResponse | None = None
     source_turn_count: int
     proposal: dict[str, Any]
+
+
+class SourceCreateRequest(BaseModel):
+    uri: str
+    title: str | None = None
+    source_type: str
+    normalized_text: str
+
+
+class ThesisVersionCreateRequest(BaseModel):
+    thesis_statement: str
+    pillars: list[dict[str, Any]]
+
+
+class ResearchLoopStartRequest(BaseModel):
+    loop_number: int
+    sources_discovered_count: int = 0
+
+
+class ResearchLoopFinalizeRequest(BaseModel):
+    convergence_delta: float
+    sources_discovered_count: int
+    status: str
+
+
+class ResearchDeepReadRequest(BaseModel):
+    thesis_version_id: str
 
 
 def approval_escalation_status(approvals: list[dict[str, Any]], blocking_rejection: bool) -> tuple[str, str | None]:
@@ -596,6 +623,178 @@ def submit_approval(project_id: str, payload: ApprovalSubmissionRequest) -> dict
         "changes_requested_count": quorum_result.changes_requested_count,
         "missing_roles": quorum_result.missing_roles,
         "blocking_rejection": quorum_result.blocking_rejection,
+    }
+
+
+@app.post("/projects/{project_id}/sources")
+def create_project_source(
+    project_id: str,
+    payload: SourceCreateRequest,
+) -> dict[str, Any]:
+    from system.db import open_pool
+    from system.source_register_repository import SourceRegisterRepository
+
+    repository = SourceRegisterRepository(open_pool())
+    row = repository.create(
+        project_id=UUID(project_id),
+        uri=payload.uri,
+        title=payload.title,
+        source_type=payload.source_type,
+        normalized_text=payload.normalized_text,
+    )
+    return {"id": str(row.id), "status": "created", "uri": payload.uri}
+
+
+@app.post("/projects/{project_id}/thesis-versions")
+def create_project_thesis_version(
+    project_id: str,
+    payload: ThesisVersionCreateRequest,
+) -> dict[str, Any]:
+    from system.db import open_pool
+    from system.thesis_repository import ThesisRepository
+
+    repository = ThesisRepository(open_pool())
+    version = repository.create_thesis_version(
+        UUID(project_id),
+        1,
+        payload.thesis_statement,
+    )
+    for pillar in payload.pillars:
+        repository.create_pillar(
+            version.id,
+            int(pillar["pillar_index"]),
+            str(pillar["pillar_type"]),
+            str(pillar["statement"]),
+        )
+
+    return {"id": str(version.id), "version_number": version.version_number}
+
+
+@app.get("/projects/{project_id}/thesis-versions/current")
+def get_current_thesis_version(project_id: str) -> dict[str, Any] | None:
+    from system.db import open_pool
+    from system.thesis_repository import ThesisRepository
+
+    repository = ThesisRepository(open_pool())
+    version = repository.get_latest_thesis(UUID(project_id))
+    if version is None:
+        return None
+
+    pillars = repository.get_pillars(version.id)
+    return {
+        "id": str(version.id),
+        "version_number": version.version_number,
+        "thesis_statement": version.thesis_statement,
+        "convergence_score": version.convergence_score,
+        "pillars": [
+            {
+                "id": str(pillar.id),
+                "pillar_index": pillar.pillar_index,
+                "pillar_type": pillar.pillar_type,
+                "statement": pillar.statement,
+                "stress_status": pillar.stress_status,
+            }
+            for pillar in pillars
+        ],
+    }
+
+
+def _neo4j_run_cypher(query: str, params: dict[str, Any]) -> list[dict[str, Any]]:
+    import os
+
+    from neo4j import GraphDatabase
+
+    uri = os.environ.get("NEO4J_URI", "bolt://localhost:7687")
+    user = os.environ.get("NEO4J_USER", "neo4j")
+    password = os.environ.get("NEO4J_PASSWORD") or "pfos_neo4j_password"
+    database = os.environ.get("NEO4J_DATABASE") or None
+
+    driver = GraphDatabase.driver(uri, auth=(user, password))
+    try:
+        with driver.session(database=database) as session:
+            result = session.run(query, **params)
+            return [dict(record) for record in result]
+    finally:
+        driver.close()
+
+
+@app.post("/projects/{project_id}/research-loops/start")
+@app.post("/research-loops/start")
+def start_research_loop(
+    project_id: str | None = None,
+    payload: ResearchLoopStartRequest | None = None,
+) -> dict[str, Any]:
+    from system.db import open_pool
+    from system.thesis_repository import ThesisRepository
+
+    if payload is None:
+        raise HTTPException(status_code=422, detail={"error": "missing_payload"})
+    if project_id is None:
+        project_id = "00000000-0000-0000-0000-000000000000"
+
+    repository = ThesisRepository(open_pool())
+    loop = repository.start_research_loop(UUID(project_id), payload.loop_number)
+    return {
+        "id": str(loop.id),
+        "loop_number": loop.loop_number,
+        "status": loop.status,
+    }
+
+
+@app.post("/projects/{project_id}/research-loops/{loop_id}/finalize")
+@app.post("/research-loops/{loop_id}/finalize")
+def finalize_research_loop(
+    loop_id: str,
+    payload: ResearchLoopFinalizeRequest,
+    project_id: str | None = None,
+) -> dict[str, Any]:
+    from system.db import open_pool
+    from system.thesis_repository import ThesisRepository
+
+    repository = ThesisRepository(open_pool())
+    repository.finalize_research_loop(
+        UUID(loop_id),
+        payload.convergence_delta,
+        payload.sources_discovered_count,
+        payload.status,
+    )
+    return {
+        "id": loop_id,
+        "status": payload.status,
+        "convergence_delta": payload.convergence_delta,
+    }
+
+
+@app.post("/projects/{project_id}/research/deep-read-sources")
+def deep_read_sources_for_pillars(
+    project_id: str,
+    payload: ResearchDeepReadRequest,
+) -> dict[str, Any]:
+    from evidence_graph.evidence_linker import deep_read_sources_for_pillars
+    from system.db import open_pool
+
+    result = deep_read_sources_for_pillars(
+        open_pool(),
+        _neo4j_run_cypher,
+        project_id=project_id,
+        thesis_version_id=payload.thesis_version_id,
+    )
+
+    return {
+        "project_id": result.project_id,
+        "thesis_version_id": result.thesis_version_id,
+        "pillar_links": [
+            {
+                "pillar_id": link.pillar_id,
+                "pillar_index": link.pillar_index,
+                "pillar_type": link.pillar_type,
+                "statement": link.statement,
+                "source_ids": list(link.source_ids),
+            }
+            for link in result.pillar_links
+        ],
+        "total_sources": result.total_sources(),
+        "pillars_with_no_sources": list(result.pillar_ids_with_no_sources()),
     }
 
 

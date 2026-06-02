@@ -1,0 +1,25 @@
+step_id: 108
+name: sandbox_financial_spec_schema
+branch: step-108-financial-spec-schema
+objective: >
+  Lay the foundation for sandbox financial model work. Add two new
+  tables — financial_model_specs and financial_scenarios — to the canonical
+  Postgres schema. Specs live in a sandbox (draft → compiled → validated →
+  promoted) and are linked to thesis_pillars so a pillar can have at most
+  one active sandbox spec at a time. Scenarios are named override sets
+  feeding a spec. Provide a FinancialSpecRepository covering create / get
+  / list / status transitions / mark-promoted / scenario CRUD. Schema is
+  applied identically to docs/04_Database_Schemas.sql and
+  infra/postgres/init/001_schema.sql to keep the canonical drift check green.
+commit_message: "step-108: Add sandbox financial_model_specs and financial_scenarios schema"
+validation_commands:
+  - python3 -m compileall system
+  - python3 -m pytest tests/unit/test_financial_spec_repository.py -vv
+  - make validate-sql-canonical
+  - make no-agent-db-imports
+files_expected:
+  - infra/postgres/init/001_schema.sql
+  - docs/04_Database_Schemas.sql
+  - system/financial_spec_repository.py
+  - tests/unit/test_financial_spec_repository.py
+  - .pfos/baby_steps/108_sandbox_financial_spec_schema.yaml

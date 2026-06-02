@@ -1,0 +1,24 @@
+step_id: 110
+name: thesis_linked_financial_repository
+branch: step-110-thesis-linked-financial-repo
+objective: >
+  Add the canonical financial_cells table alongside the sandbox
+  financial_model_specs (step 108). The canonical table holds evaluated
+  numeric values with full lineage: thesis_pillar_id (FK to thesis_pillars),
+  promoted_from_spec (FK to financial_model_specs, set by step 141's
+  promotion), parser_provenance, artifact_status. Document the schema
+  for both project_id+scenario+cell_ref uniqueness and the artifact_status
+  lifecycle. Provide FinancialRepository for upsert, get, list-by-project,
+  list-for-pillar, list-from-spec, set_artifact_status, set_phase_scope_version.
+commit_message: "step-110: Add canonical financial_cells table and thesis-linked repository"
+validation_commands:
+  - python3 -m compileall system
+  - python3 -m pytest tests/unit/test_financial_repository.py -vv
+  - make validate-sql-canonical
+  - make no-agent-db-imports
+files_expected:
+  - infra/postgres/init/001_schema.sql
+  - docs/04_Database_Schemas.sql
+  - system/financial_repository.py
+  - tests/unit/test_financial_repository.py
+  - .pfos/baby_steps/110_thesis_linked_financial_repository.yaml

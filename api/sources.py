@@ -123,3 +123,22 @@ def update_source_lifecycle_event_status(
         event_type=event.event_type,
         processing_status=event.processing_status,
     )
+# --- Step 103 extension: bridge lifecycle events to source_register ---
+
+def _ensure_source_register_from_lifecycle_event(event_type: str, payload: dict, db_pool: Any) -> None:
+    """Call this inside existing lifecycle event handlers when event_type == 'created'."""
+    if event_type != "created":
+        return
+    if "uri" not in payload or "source_type" not in payload:
+        return
+    from system.source_register_repository import SourceRegisterRepository
+    repo = SourceRegisterRepository(db_pool)
+    repo.create(
+        project_id=payload["project_id"],
+        uri=payload["uri"],
+        title=payload.get("title"),
+        source_type=payload["source_type"],
+        normalized_text=payload.get("normalized_text", ""),
+    )
+
+

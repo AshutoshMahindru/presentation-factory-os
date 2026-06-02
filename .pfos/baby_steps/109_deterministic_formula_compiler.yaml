@@ -1,0 +1,25 @@
+step_id: 109
+name: deterministic_formula_compiler
+branch: step-109-formula-compiler
+objective: >
+  Add a deterministic, LLM-free financial spec compiler that turns a JSON
+  spec (formulas + constants) into financial cells suitable for storage
+  and export. The compiler parses expressions with a safe AST whitelist,
+  builds a dependency graph, topologically sorts formulas, and evaluates
+  in order. Compiled cells flow through the existing
+  FinancialModelValidator so the output is export-ready. Expose the
+  compiler via a new tool_server endpoint POST /tools/compile_financial_spec.
+commit_message: "step-109: Add deterministic formula compiler for financial specs"
+validation_commands:
+  - python3 -m compileall financial_model tool_server
+  - python3 -m pytest tests/unit/test_spec_compiler.py -vv
+  - python3 -m pytest tests/unit/test_tool_server_compile.py -vv
+  - python3 -m pytest tests/unit/test_financial_validator.py -vv
+  - make no-agent-db-imports
+files_expected:
+  - financial_model/spec_compiler.py
+  - tool_server/app.py
+  - tests/unit/test_spec_compiler.py
+  - tests/unit/test_tool_server_compile.py
+  - pyproject.toml
+  - .pfos/baby_steps/109_deterministic_formula_compiler.yaml

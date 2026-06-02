@@ -13,6 +13,9 @@ FOR (sl:Slide) REQUIRE sl.id IS UNIQUE;
 CREATE CONSTRAINT project_id_unique IF NOT EXISTS
 FOR (p:Project) REQUIRE p.id IS UNIQUE;
 
+CREATE CONSTRAINT pillar_id_unique IF NOT EXISTS
+FOR (pl:Pillar) REQUIRE pl.id IS UNIQUE;
+
 // Project and status indexes
 CREATE INDEX claim_project_id_index IF NOT EXISTS
 FOR (c:Claim) ON (c.project_id);
@@ -37,6 +40,15 @@ FOR (sl:Slide) ON (sl.status);
 
 CREATE INDEX project_status_index IF NOT EXISTS
 FOR (p:Project) ON (p.status);
+
+CREATE INDEX pillar_project_id_index IF NOT EXISTS
+FOR (pl:Pillar) ON (pl.project_id);
+
+CREATE INDEX pillar_thesis_version_id_index IF NOT EXISTS
+FOR (pl:Pillar) ON (pl.thesis_version_id);
+
+CREATE INDEX claim_pillar_edge_index IF NOT EXISTS
+FOR ()-[r:SUPPORTS_PILLAR]-() ON (r.pillar_id);
 
 // Node structures
 // (:Project {
@@ -76,6 +88,16 @@ FOR (p:Project) ON (p.status);
 //   slide_number: integer,
 //   title: string,
 //   status: 'draft'|'blocked'|'review_ready'|'approved'|'exported',
+//   created_at: datetime
+// })
+//
+// (:Pillar {
+//   id: string,
+//   project_id: string,
+//   thesis_version_id: string,
+//   pillar_index: integer,
+//   statement: string,
+//   pillar_type: 'claim'|'data'|'objection'|'narrative'|'financial',
 //   created_at: datetime
 // })
 
@@ -185,3 +207,44 @@ FOR (p:Project) ON (p.status);
 // Pattern: outbox_idempotent_apply
 // Cross-store Neo4j writes are invoked only by the job-runner after reading Postgres outbox rows.
 // Every operation must be idempotent and safe to retry up to outbox_max_retry.
+
+// Pattern: upsert_pillar
+// Step 107: project a Postgres thesis_pillar into Neo4j as a (:Pillar) node.
+// Pillar is the thesis-aware anchor for evidence linkage.
+// Idempotent: re-running for the same (project_id, thesis_version_id, pillar_index) updates statement/pillar_type.
+// Application must MERGE Project first; the call assumes the Project node already exists.
+//
+MERGE (p:Project {id: $project_id})
+ON CREATE SET p.created_at = datetime()
+MERGE (pl:Pillar {id: $pillar_id})
+ON CREATE SET pl.created_at = datetime()
+SET pl.project_id = $project_id,
+    pl.thesis_version_id = $thesis_version_id,
+    pl.pillar_index = $pillar_index,
+    pl.statement = $statement,
+    pl.pillar_type = $pillar_type
+WITH pl
+MATCH (p:Project {id: $project_id})
+MERGE (p)-[:HAS_PILLAR]->(pl)
+RETURN pl.id AS pillar_id;
+
+// Pattern: link_claim_to_pillar
+// Step 107: explicit Claim → Pillar linkage. Edge carries a confidence score
+// (set by the claim-generation agent out of band; the linker is read-only on this edge).
+//
+MATCH (c:Claim {id: $claim_id, project_id: $project_id})
+MATCH (pl:Pillar {id: $pillar_id, project_id: $project_id})
+MERGE (c)-[r:SUPPORTS_PILLAR {pillar_id: $pillar_id}]->(pl)
+ON CREATE SET r.created_at = datetime(), r.confidence = $confidence
+RETURN c.id AS claim_id, pl.id AS pillar_id;
+
+// Pattern: list_sources_for_pillar
+// Step 107: enumerate the active sources that ultimately back a Pillar.
+// Traverses Pillar ←SUPPORTS_PILLAR- Claim -SUPPORTED_BY→ Source.
+// Used by the deep_read step to write search_coverage back to source_register.
+//
+MATCH (pl:Pillar {id: $pillar_id, project_id: $project_id})
+MATCH (pl)<-[sp:SUPPORTS_PILLAR]-(c:Claim)
+MATCH (c)-[sb:SUPPORTED_BY]->(s:Source {status: 'active'})
+RETURN DISTINCT s.id AS source_id
+ORDER BY source_id;
