@@ -1,0 +1,19 @@
+step_id: 113
+name: intake_chat_orchestrator
+branch: codex/step-113-intake-chat-orchestrator
+objective: >
+  Add a DB-free intake chat orchestrator and intake agent contract that append
+  user turns through the workflow boundary, derive structured project and
+  audience-profile update proposals from safe chat history, append an assistant
+  summary, and expose a deterministic payload for Step 114 API wiring.
+commit_message: "step-113: Add intake chat orchestrator"
+validation_commands:
+  - python3 -m compileall agents
+  - python3 -m pytest tests/unit/test_intake_agent.py tests/unit/test_intake_orchestrator.py -vv
+  - make no-agent-db-imports
+files_expected:
+  - agents/intake_agent.py
+  - agents/intake_chat_orchestrator.py
+  - tests/unit/test_intake_agent.py
+  - tests/unit/test_intake_orchestrator.py
+  - .pfos/baby_steps/113_intake_chat_orchestrator.yaml

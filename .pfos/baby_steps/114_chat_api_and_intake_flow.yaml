@@ -1,0 +1,20 @@
+step_id: 114
+name: chat_api_and_intake_flow
+branch: codex/step-114-chat-api-intake-flow
+objective: >
+  Wire the intake chat repository and orchestrator into workflow-service API
+  routes for append-only chat history, deterministic local intake proposal
+  generation, and focused integration coverage without requiring remote LLM
+  credentials.
+commit_message: "step-114: Add intake chat API flow"
+validation_commands:
+  - python3 -m compileall api agents system
+  - python3 -m pytest tests/integration/test_chat_api.py tests/integration/test_chat_intake_flow.py -vv
+  - python3 -m pytest tests/unit/test_intake_agent.py tests/unit/test_intake_orchestrator.py tests/unit/test_chat_repository.py -vv
+  - make no-agent-db-imports
+  - python3 scripts/validate_yaml.py
+files_expected:
+  - api/workflow.py
+  - tests/integration/test_chat_api.py
+  - tests/integration/test_chat_intake_flow.py
+  - .pfos/baby_steps/114_chat_api_and_intake_flow.yaml
