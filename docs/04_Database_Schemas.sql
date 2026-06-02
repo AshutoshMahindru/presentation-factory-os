@@ -167,6 +167,47 @@ CREATE INDEX IF NOT EXISTS idx_financial_cells_validation ON financial_cells(val
 CREATE INDEX IF NOT EXISTS idx_financial_cells_artifact_status ON financial_cells(project_id, artifact_status);
 CREATE INDEX IF NOT EXISTS idx_financial_cells_parser ON financial_cells(ingestion_source_type);
 
+CREATE TABLE IF NOT EXISTS thesis_versions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+  version_number INTEGER NOT NULL CHECK (version_number >= 1),
+  thesis_statement TEXT NOT NULL,
+  convergence_score NUMERIC,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(project_id, version_number)
+);
+
+CREATE TABLE IF NOT EXISTS thesis_pillars (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  thesis_version_id UUID NOT NULL REFERENCES thesis_versions(id) ON DELETE CASCADE,
+  pillar_index INTEGER NOT NULL,
+  pillar_type TEXT NOT NULL CHECK (pillar_type IN ('claim', 'data', 'objection', 'narrative', 'financial')),
+  statement TEXT NOT NULL,
+  stress_status TEXT NOT NULL DEFAULT 'stable' CHECK (stress_status IN ('stable', 'stressed')),
+  UNIQUE(thesis_version_id, pillar_index)
+);
+
+CREATE TABLE IF NOT EXISTS research_loops (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  loop_number INTEGER NOT NULL CHECK (loop_number >= 1),
+  convergence_delta NUMERIC,
+  sources_discovered_count INTEGER NOT NULL DEFAULT 0 CHECK (sources_discovered_count >= 0),
+  status TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'converged', 'failed', 'force_stopped', 'max_loops_reached')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  completed_at TIMESTAMPTZ,
+  UNIQUE(project_id, loop_number)
+);
+
+ALTER TABLE financial_cells
+  ADD COLUMN IF NOT EXISTS thesis_pillar_id UUID REFERENCES thesis_pillars(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS promoted_from_spec UUID;
+
+CREATE INDEX IF NOT EXISTS idx_thesis_versions_project ON thesis_versions(project_id, version_number DESC);
+CREATE INDEX IF NOT EXISTS idx_thesis_pillars_version ON thesis_pillars(thesis_version_id, pillar_index);
+CREATE INDEX IF NOT EXISTS idx_research_loops_project ON research_loops(project_id, loop_number);
+CREATE INDEX IF NOT EXISTS idx_financial_cells_pillar ON financial_cells(thesis_pillar_id);
+
 CREATE TABLE IF NOT EXISTS design_tokens (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
