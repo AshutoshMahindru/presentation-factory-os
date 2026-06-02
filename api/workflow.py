@@ -377,3 +377,57 @@ def submit_approval(project_id: str, payload: ApprovalSubmissionRequest) -> dict
         "missing_roles": quorum_result.missing_roles,
         "blocking_rejection": quorum_result.blocking_rejection,
     }
+
+
+@app.post(
+    "/projects/{project_id}/thesis-versions/{thesis_version_id}/financial-review-context"
+)
+def financial_review_context(
+    project_id: str,
+    thesis_version_id: str,
+) -> dict[str, Any]:
+    """Return thesis pillars and active financial cells for review."""
+    from uuid import UUID
+
+    from system.db import open_pool
+    from system.financial_repository import FinancialRepository
+    from system.thesis_repository import ThesisRepository
+
+    pool = open_pool()
+    thesis_repo = ThesisRepository(pool)
+    financial_repo = FinancialRepository(pool)
+
+    pillars = thesis_repo.get_pillars(UUID(thesis_version_id))
+    cells_by_pillar: dict[str, list[dict[str, Any]]] = {}
+    for pillar in pillars:
+        cells = financial_repo.list_cells_for_pillar(pillar.id)
+        cells_by_pillar[str(pillar.id)] = [
+            {
+                "id": str(cell.id),
+                "cell_ref": cell.cell_ref,
+                "label": cell.label,
+                "value": float(cell.value),
+                "unit": cell.unit,
+                "scenario": cell.scenario,
+                "formula": cell.formula,
+                "artifact_status": cell.artifact_status,
+            }
+            for cell in cells
+            if cell.artifact_status == "active"
+        ]
+
+    return {
+        "project_id": project_id,
+        "thesis_version_id": thesis_version_id,
+        "pillars": [
+            {
+                "id": str(pillar.id),
+                "pillar_index": pillar.pillar_index,
+                "pillar_type": pillar.pillar_type,
+                "statement": pillar.statement,
+                "stress_status": pillar.stress_status,
+            }
+            for pillar in pillars
+        ],
+        "cells_by_pillar": cells_by_pillar,
+    }
