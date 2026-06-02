@@ -377,3 +377,31 @@ def submit_approval(project_id: str, payload: ApprovalSubmissionRequest) -> dict
         "missing_roles": quorum_result.missing_roles,
         "blocking_rejection": quorum_result.blocking_rejection,
     }
+
+# --- Step 103: Source discovery endpoint ---
+
+from pydantic import BaseModel
+from typing import Any
+
+class SourceCreateRequest(BaseModel):
+    uri: str
+    title: str | None = None
+    source_type: str
+    normalized_text: str
+
+@app.post("/projects/{project_id}/sources")
+async def create_project_source(
+    project_id: str,
+    req: SourceCreateRequest,
+) -> dict[str, Any]:
+    from system.source_register_repository import SourceRegisterRepository
+    repo = SourceRegisterRepository(db_pool)  # type: ignore[name-defined]
+    row = repo.create(
+        project_id=project_id,
+        uri=req.uri,
+        title=req.title,
+        source_type=req.source_type,
+        normalized_text=req.normalized_text,
+    )
+    return {"id": str(row.id), "status": "created", "uri": req.uri}
+
