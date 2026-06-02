@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+import json
+from dataclasses import asdict, is_dataclass
 from typing import Any
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from agents.intake_agent import IntakeAgent
+from agents.intake_chat_orchestrator import IntakeChatOrchestrator
 from api.project_repository import ProjectRepository
 from system.audience_profile_validator import AudienceProfileValidator
 from system.approval_quorum import ApprovalEntry, ApprovalQuorum
+from system.chat_repository import ChatMessage, ChatRepository
 from system.outbox_repository import OutboxRepository
 from system.state_machine import GuardFailedError, StateMachine, StateMachineError
 
@@ -18,6 +23,86 @@ app = FastAPI(title="PFOS Workflow Service", version="3.2.4")
 
 project_repository = ProjectRepository()
 outbox_repository = OutboxRepository()
+chat_repository = ChatRepository()
+
+
+class DeterministicIntakeLLMClient:
+    """Local fallback client used until a remotely configured intake model exists."""
+
+    def complete(
+        self, prompt: str, temperature: float = 0.0, max_tokens: int = 2000
+    ) -> str:
+        return json.dumps(
+            {
+                "project_updates": {},
+                "audience_profile": {
+                    "decision_maker_type": "ic_partner",
+                    "risk_tolerance": "medium",
+                    "familiarity_with_topic": "informed",
+                    "known_objections": [],
+                    "stakeholder_map": [
+                        {
+                            "role": "economic_buyer",
+                            "concern": "Intake details incomplete",
+                            "influence_level": "medium",
+                        }
+                    ],
+                },
+                "confidence": 0.2,
+                "gaps": [
+                    "Deterministic fallback needs more operator-provided intake context."
+                ],
+                "recommended_next_action": (
+                    "Continue intake chat before applying project updates."
+                ),
+            },
+            sort_keys=True,
+        )
+
+
+def chat_message_to_payload(message: ChatMessage | dict[str, Any]) -> dict[str, Any]:
+    if isinstance(message, ChatMessage):
+        return asdict(message)
+    if is_dataclass(message):
+        return asdict(message)  # type: ignore[arg-type]
+    return dict(message)
+
+
+class WorkflowChatClient:
+    def __init__(self, repository: ChatRepository) -> None:
+        self.repository = repository
+
+    def append_intake_chat_message(
+        self,
+        project_id: str,
+        role: str,
+        content: str,
+        metadata: dict[str, Any] | None = None,
+        actor_email: str | None = None,
+    ) -> dict[str, Any]:
+        return chat_message_to_payload(
+            self.repository.append_message(
+                project_id=project_id,
+                role=role,
+                content=content,
+                metadata=metadata,
+                actor_email=actor_email,
+            )
+        )
+
+    def list_intake_chat_messages(
+        self, project_id: str, limit: int = 100
+    ) -> tuple[dict[str, Any], ...]:
+        return tuple(
+            chat_message_to_payload(message)
+            for message in self.repository.list_messages(project_id, limit=limit)
+        )
+
+
+intake_chat_orchestrator = IntakeChatOrchestrator(
+    workflow_client=WorkflowChatClient(chat_repository),
+    intake_agent=IntakeAgent(DeterministicIntakeLLMClient()),
+)
 
 
 class CreateProjectRequest(BaseModel):
@@ -79,6 +164,38 @@ class OutboxStatusResponse(BaseModel):
     oldest_unprocessed_age_seconds: int | None = None
 
 
+class IntakeChatMessageRequest(BaseModel):
+    content: str = Field(min_length=1)
+    actor_email: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class IntakeChatMessageResponse(BaseModel):
+    message_id: str
+    project_id: str
+    turn_index: int
+    role: str
+    content: str
+    metadata: dict[str, Any]
+    actor_email: str | None = None
+    created_at: str
+
+
+class IntakeChatMessagesResponse(BaseModel):
+    project_id: str
+    message_count: int
+    messages: list[IntakeChatMessageResponse]
+
+
+class IntakeChatTurnResponse(BaseModel):
+    project_id: str
+    status: str
+    user_message: IntakeChatMessageResponse
+    assistant_message: IntakeChatMessageResponse | None = None
+    source_turn_count: int
+    proposal: dict[str, Any]
+
+
 def approval_escalation_status(approvals: list[dict[str, Any]], blocking_rejection: bool) -> tuple[str, str | None]:
     if any(
         approval["role"] == "senior_partner" and approval["decision"] == "rejected"
@@ -128,6 +245,109 @@ def create_project(payload: CreateProjectRequest) -> CreateProjectResponse:
         project_id=project.project_id,
         phase=project.current_phase,
         audience_profile_valid=True,
+    )
+
+
+@app.get(
+    "/projects/{project_id}/intake-chat/messages",
+    response_model=IntakeChatMessagesResponse,
+)
+def list_intake_chat_messages(
+    project_id: str,
+    limit: int = 100,
+    after_turn_index: int | None = None,
+) -> IntakeChatMessagesResponse:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail={"error": "project_not_found"})
+
+    try:
+        messages = [
+            IntakeChatMessageResponse(**chat_message_to_payload(message))
+            for message in chat_repository.list_messages(
+                project_id=project_id,
+                limit=limit,
+                after_turn_index=after_turn_index,
+            )
+        ]
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "invalid_chat_query", "message": str(exc)},
+        ) from exc
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "chat_repository_unavailable", "message": str(exc)},
+        ) from exc
+
+    return IntakeChatMessagesResponse(
+        project_id=project_id,
+        message_count=len(messages),
+        messages=messages,
+    )
+
+
+@app.post(
+    "/projects/{project_id}/intake-chat",
+    response_model=IntakeChatTurnResponse,
+)
+@app.post(
+    "/projects/{project_id}/intake-chat/messages",
+    response_model=IntakeChatTurnResponse,
+)
+def append_intake_chat_message(
+    project_id: str,
+    payload: IntakeChatMessageRequest,
+) -> IntakeChatTurnResponse:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail={"error": "project_not_found"})
+
+    if project.current_phase != "intake":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "phase_mismatch",
+                "current_phase": project.current_phase,
+                "required_phase": "intake",
+            },
+        )
+
+    try:
+        result = intake_chat_orchestrator.handle_user_message(
+            project_id=project_id,
+            content=payload.content,
+            actor_email=payload.actor_email,
+            metadata=payload.metadata,
+        )
+        result_payload = result.to_payload()
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "invalid_chat_message", "message": str(exc)},
+        ) from exc
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "intake_chat_unavailable", "message": str(exc)},
+        ) from exc
+
+    return IntakeChatTurnResponse(
+        project_id=str(result_payload["project_id"]),
+        status=str(result_payload["status"]),
+        user_message=IntakeChatMessageResponse(
+            **chat_message_to_payload(result_payload["user_message"])
+        ),
+        assistant_message=(
+            IntakeChatMessageResponse(
+                **chat_message_to_payload(result_payload["assistant_message"])
+            )
+            if result_payload.get("assistant_message") is not None
+            else None
+        ),
+        source_turn_count=int(result_payload["source_turn_count"]),
+        proposal=dict(result_payload["proposal"]),
     )
 
 
