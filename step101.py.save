@@ -1,0 +1,296 @@
+import os
+import pathlib
+
+BASE = pathlib.Path(__file__).parent
+
+def write(path, content):
+    full = BASE / path
+    full.parent.mkdir(parents=True, exist_ok=True)
+    full.write_text(content, encoding="utf-8")
+    print(f"Wrote: {full}")
+    return full
+
+def append_schema():
+    schema_path = BASE / "infra/postgres/init/001_schema.sql"
+    doc_path = BASE / "docs/04_Database_Schemas.sql"
+    
+    addition = """
+
+-- Step 101: Source Register & Thesis Registry Schema
+
+CREATE TABLE IF NOT EXISTS source_register (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    uri TEXT NOT NULL,
+    title TEXT,
+    source_type TEXT NOT NULL CHECK (source_type IN ('pdf', 'web', 'document')),
+    content_hash TEXT NOT NULL,
+    quality_score JSONB NOT NULL DEFAULT '{}',
+    search_coverage JSONB NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'retracted', 'superseded')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(project_id, content_hash)
+);
+
+CREATE INDEX IF NOT EXISTS idx_source_register_project ON source_register(project_id, status);
+CREATE INDEX IF NOT EXISTS idx_source_register_hash ON source_register(project_id, content_hash);
+
+CREATE TABLE IF NOT EXISTS thesis_versions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+    version_number INTEGER NOT NULL,
+    thesis_statement TEXT NOT NULL,
+    convergence_score FLOAT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(project_id, version_number)
+);
+
+CREATE TABLE IF NOT EXISTS thesis_pillars (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    thesis_version_id UUID NOT NULL REFERENCES thesis_versions(id) ON DELETE CASCADE,
+    pillar_index INTEGER NOT NULL,
+    pillar_type TEXT NOT NULL CHECK (pillar_type IN ('claim', 'data', 'objection', 'narrative', 'financial')),
+    statement TEXT NOT NULL,
+    stress_status TEXT NOT NULL DEFAULT 'stable' CHECK (stress_status IN ('stable', 'stressed', 'retracted')),
+    UNIQUE(thesis_version_id, pillar_index)
+);
+
+CREATE TABLE IF NOT EXISTS research_loops (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    loop_number INTEGER NOT NULL,
+    convergence_delta FLOAT,
+    sources_discovered_count INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'converged', 'failed', 'force_stopped')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    completed_at TIMESTAMPTZ,
+    UNIQUE(project_id, loop_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_research_loops_project ON research_loops(project_id, loop_number);
+"""
+    for p in [schema_path, doc_path]:
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(addition)
+        print(f"Appended schema to: {p}")
+
+# ---- source_register_repository.py ----
+write("system/source_register_repository.py", '''from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import dataclass
+from typing import Any
+from uuid import UUID
+
+from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
+
+
+@dataclass(frozen=True)
+class SourceRegisterRow:
+    id: UUID
+    project_id: UUID
+    uri: str
+    title: str | None
+    source_type: str
+    content_hash: str
+    quality_score: dict[str, Any]
+    search_coverage: list[dict[str, Any]]
+    status: str
+    created_at: str
+    updated_at: str
+
+
+class SourceRegisterRepository:
+    def __init__(self, pool: ConnectionPool) -> None:
+        self._pool = pool
+
+    @staticmethod
+    def compute_content_hash(normalized_text: str) -> str:
+        return hashlib.sha256(normalized_text.encode("utf-8")).hexdigest()
+
+    def create(
+        self,
+        project_id: UUID,
+        uri: str,
+        title: str | None,
+        source_type: str,
+        normalized_text: str,
+        quality_score: dict[str, Any] | None = None,
+    ) -> SourceRegisterRow:
+        content_hash = self.compute_content_hash(normalized_text)
+        with self._pool.connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(
+                    """
+                    INSERT INTO source_register (project_id, uri, title, source_type, content_hash, quality_score)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (project_id, content_hash) DO UPDATE SET
+                        status = 'active',
+                        updated_at = now()
+                    RETURNING *
+                    """,
+                    (project_id, uri, title, source_type, content_hash, json.dumps(quality_score or {})),
+                )
+                row = cur.fetchone()
+                conn.commit()
+                return self._to_row(row)
+
+    def get(self, source_id: UUID) -> SourceRegisterRow | None:
+        with self._pool.connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute("SELECT * FROM source_register WHERE id = %s", (source_id,))
+                row = cur.fetchone()
+                return self._to_row(row) if row else None
+
+    def list_by_project(self, project_id: UUID, status: str | None = None) -> list[SourceRegisterRow]:
+        with self._pool.connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                if status:
+                    cur.execute(
+                        "SELECT * FROM source_register WHERE project_id = %s AND status = %s ORDER BY created_at DESC",
+                        (project_id, status),
+                    )
+                else:
+                    cur.execute(
+                        "SELECT * FROM source_register WHERE project_id = %s ORDER BY created_at DESC",
+                        (project_id,),
+                    )
+                rows = cur.fetchall()
+                return [self._to_row(r) for r in rows]
+
+    def update_search_coverage(self, source_id: UUID, thesis_version_id: UUID, pillar_ids: list[UUID]) -> None:
+        coverage_entry = {
+            "thesis_version_id": str(thesis_version_id),
+            "pillar_ids": [str(p) for p in pillar_ids],
+        }
+        with self._pool.connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(
+                    """
+                    UPDATE source_register
+                    SET search_coverage = search_coverage || %s::jsonb,
+                        updated_at = now()
+                    WHERE id = %s
+                    """,
+                    (json.dumps([coverage_entry]), source_id),
+                )
+                conn.commit()
+
+    def mark_retracted(self, source_id: UUID) -> None:
+        with self._pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE source_register SET status = 'retracted', updated_at = now() WHERE id = %s",
+                    (source_id,),
+                )
+                conn.commit()
+
+    @staticmethod
+    def _to_row(row: dict[str, Any]) -> SourceRegisterRow:
+        return SourceRegisterRow(
+            id=row["id"],
+            project_id=row["project_id"],
+            uri=row["uri"],
+            title=row["title"],
+            source_type=row["source_type"],
+            content_hash=row["content_hash"],
+            quality_score=json.loads(row["quality_score"]) if row["quality_score"] else {},
+            search_coverage=json.loads(row["search_coverage"]) if row["search_coverage"] else [],
+            status=row["status"],
+            created_at=str(row["created_at"]),
+            updated_at=str(row["updated_at"]),
+        )
+''')
+
+# ---- thesis_repository.py ----
+write("system/thesis_repository.py", '''from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+from uuid import UUID
+
+from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
+
+
+@dataclass(frozen=True)
+class ThesisVersion:
+    id: UUID
+    project_id: UUID
+    version_number: int
+    thesis_statement: str
+    convergence_score: float | None
+    created_at: str
+
+
+@dataclass(frozen=True)
+class ThesisPillar:
+    id: UUID
+    thesis_version_id: UUID
+    pillar_index: int
+    pillar_type: str
+    statement: str
+    stress_status: str
+
+
+@dataclass(frozen=True)
+class ResearchLoop:
+    id: UUID
+    project_id: UUID
+    loop_number: int
+    convergence_delta: float | None
+    sources_discovered_count: int
+    status: str
+    created_at: str
+    completed_at: str | None
+
+
+class ThesisRepository:
+    def __init__(self, pool: ConnectionPool) -> None:
+        self._pool = pool
+
+    def create_thesis_version(self, project_id: UUID, version_number: int, thesis_statement: str) -> ThesisVersion:
+        with self._pool.connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(
+                    "INSERT INTO thesis_versions (project_id, version_number, thesis_statement) VALUES (%s, %s, %s) RETURNING *",
+                    (project_id, version_number, thesis_statement),
+                )
+                row = cur.fetchone()
+                conn.commit()
+                return self._to_version(row)
+
+    def get_latest_thesis(self, project_id: UUID) -> ThesisVersion | None:
+        with self._pool.connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(
+                    "SELECT * FROM thesis_versions WHERE project_id = %s ORDER BY version_number DESC LIMIT 1",
+                    (project_id,),
+                )
+                row = cur.fetchone()
+                return self._to_version(row) if row else None
+
+    def update_convergence_score(self, thesis_version_id: UUID, score: float) -> None:
+        with self._pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE thesis_versions SET convergence_score = %s WHERE id = %s",
+                    (score, thesis_version_id),
+                )
+                conn.commit()
+
+    def create_pillar(self, thesis_version_id: UUID, pillar_index: int, pillar_type: str, statement: str) -> ThesisPillar:
+        with self._pool.connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(
+                    "INSERT INTO thesis_pillars (thesis_version_id, pillar_index, pillar_type, statement) VALUES (%s, %s, %s, %s) RETURNING *",
+                    (thesis_version_id, pillar_index, pillar_type, statement),
+                )
+                row = cur.fetchone()
+                conn.commit()
+                return self._to_pillar(row)
+
+    def get_pillars(self, thesis_veqqr

@@ -277,3 +277,113 @@ CREATE INDEX IF NOT EXISTS idx_retrieval_routing_low_conf ON retrieval_routing_l
 
 CREATE INDEX IF NOT EXISTS idx_rubric_scores_latest ON rubric_scores(project_id, phase, dimension, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_design_tokens_schema_id ON design_tokens(schema_id);
+
+
+-- Step 101: Source Register & Thesis Registry Schema
+
+CREATE TABLE IF NOT EXISTS source_register (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    uri TEXT NOT NULL,
+    title TEXT,
+    source_type TEXT NOT NULL CHECK (source_type IN ('pdf', 'web', 'document')),
+    content_hash TEXT NOT NULL,
+    quality_score JSONB NOT NULL DEFAULT '{}',
+    search_coverage JSONB NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'retracted', 'superseded')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(project_id, content_hash)
+);
+
+CREATE INDEX IF NOT EXISTS idx_source_register_project ON source_register(project_id, status);
+CREATE INDEX IF NOT EXISTS idx_source_register_hash ON source_register(project_id, content_hash);
+
+CREATE TABLE IF NOT EXISTS thesis_versions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+    version_number INTEGER NOT NULL,
+    thesis_statement TEXT NOT NULL,
+    convergence_score FLOAT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(project_id, version_number)
+);
+
+CREATE TABLE IF NOT EXISTS thesis_pillars (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    thesis_version_id UUID NOT NULL REFERENCES thesis_versions(id) ON DELETE CASCADE,
+    pillar_index INTEGER NOT NULL,
+    pillar_type TEXT NOT NULL CHECK (pillar_type IN ('claim', 'data', 'objection', 'narrative', 'financial')),
+    statement TEXT NOT NULL,
+    stress_status TEXT NOT NULL DEFAULT 'stable' CHECK (stress_status IN ('stable', 'stressed', 'retracted')),
+    UNIQUE(thesis_version_id, pillar_index)
+);
+
+CREATE TABLE IF NOT EXISTS research_loops (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    loop_number INTEGER NOT NULL,
+    convergence_delta FLOAT,
+    sources_discovered_count INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'converged', 'failed', 'force_stopped')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    completed_at TIMESTAMPTZ,
+    UNIQUE(project_id, loop_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_research_loops_project ON research_loops(project_id, loop_number);
+
+
+-- Step 101: Source Register & Thesis Registry Schema
+
+CREATE TABLE IF NOT EXISTS source_register (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    uri TEXT NOT NULL,
+    title TEXT,
+    source_type TEXT NOT NULL CHECK (source_type IN ('pdf', 'web', 'document')),
+    content_hash TEXT NOT NULL,
+    quality_score JSONB NOT NULL DEFAULT '{}',
+    search_coverage JSONB NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'retracted', 'superseded')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(project_id, content_hash)
+);
+
+CREATE INDEX IF NOT EXISTS idx_source_register_project ON source_register(project_id, status);
+CREATE INDEX IF NOT EXISTS idx_source_register_hash ON source_register(project_id, content_hash);
+
+CREATE TABLE IF NOT EXISTS thesis_versions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+    version_number INTEGER NOT NULL,
+    thesis_statement TEXT NOT NULL,
+    convergence_score FLOAT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(project_id, version_number)
+);
+
+CREATE TABLE IF NOT EXISTS thesis_pillars (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    thesis_version_id UUID NOT NULL REFERENCES thesis_versions(id) ON DELETE CASCADE,
+    pillar_index INTEGER NOT NULL,
+    pillar_type TEXT NOT NULL CHECK (pillar_type IN ('claim', 'data', 'objection', 'narrative', 'financial')),
+    statement TEXT NOT NULL,
+    stress_status TEXT NOT NULL DEFAULT 'stable' CHECK (stress_status IN ('stable', 'stressed', 'retracted')),
+    UNIQUE(thesis_version_id, pillar_index)
+);
+
+CREATE TABLE IF NOT EXISTS research_loops (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    loop_number INTEGER NOT NULL,
+    convergence_delta FLOAT,
+    sources_discovered_count INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'converged', 'failed', 'force_stopped')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    completed_at TIMESTAMPTZ,
+    UNIQUE(project_id, loop_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_research_loops_project ON research_loops(project_id, loop_number);
