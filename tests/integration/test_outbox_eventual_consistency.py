@@ -1,7 +1,14 @@
+import os
 import subprocess
+
+import pytest
 
 
 COMPOSE = ["docker", "compose", "-f", "docker-compose.apps.yaml"]
+pytestmark = pytest.mark.skipif(
+    os.environ.get("PFOS_RUN_LIVE_TESTS") != "1",
+    reason="Live Docker/Postgres/Neo4j smoke test; set PFOS_RUN_LIVE_TESTS=1",
+)
 
 
 def extract_uuid(stdout: str) -> str:
@@ -41,7 +48,16 @@ def psql(sql: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def require_postgres() -> None:
+    result = psql("SELECT 1;")
+    if result.returncode != 0 and 'service "postgres" is not running' in result.stderr:
+        pytest.skip("Docker Postgres service is not running")
+    assert result.returncode == 0, result.stderr
+
+
 def test_outbox_worker_processes_unprocessed_row():
+    require_postgres()
+
     setup = """
     WITH project AS (
       INSERT INTO projects (name, audience, audience_profile)
@@ -63,6 +79,7 @@ def test_outbox_worker_processes_unprocessed_row():
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        timeout=30,
         check=False,
     )
 
@@ -75,6 +92,8 @@ def test_outbox_worker_processes_unprocessed_row():
 
 
 def test_outbox_worker_processes_claim_updated_row():
+    require_postgres()
+
     setup = """
     WITH project AS (
       INSERT INTO projects (name, audience, audience_profile)
@@ -96,6 +115,7 @@ def test_outbox_worker_processes_claim_updated_row():
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        timeout=30,
         check=False,
     )
 

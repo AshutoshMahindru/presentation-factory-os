@@ -5,25 +5,38 @@ from dataclasses import asdict, is_dataclass
 from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from agents.intake_agent import IntakeAgent
 from agents.intake_chat_orchestrator import IntakeChatOrchestrator
+from api.sources import router as sources_router
 from api.project_repository import ProjectRepository
 from system.audience_profile_validator import AudienceProfileValidator
 from system.approval_quorum import ApprovalEntry, ApprovalQuorum
 from system.chat_repository import ChatMessage, ChatRepository
+from system.hard_gate_repository import HardGateRepository
 from system.outbox_repository import OutboxRepository
+from system.source_lifecycle_repository import SourceLifecycleRepository
 from system.state_machine import GuardFailedError, StateMachine, StateMachineError
 
 
 
 app = FastAPI(title="PFOS Workflow Service", version="3.2.4")
+app.include_router(sources_router)
 
 project_repository = ProjectRepository()
 outbox_repository = OutboxRepository()
 chat_repository = ChatRepository()
+hard_gate_repository = HardGateRepository()
+source_lifecycle_repository = SourceLifecycleRepository()
+
+
+def create_thesis_repository() -> Any:
+    from system.db import open_pool
+    from system.thesis_repository import ThesisRepository
+
+    return ThesisRepository(open_pool())
 
 
 class DeterministicIntakeLLMClient:
@@ -164,6 +177,23 @@ class OutboxStatusResponse(BaseModel):
     oldest_unprocessed_age_seconds: int | None = None
 
 
+class SourceRetractionStatusResponse(BaseModel):
+    project_id: str
+    blocked: bool
+    pending_count: int
+    processing_count: int
+    failed_count: int
+    oldest_open_age_seconds: int | None = None
+
+
+class HardGateStatusResponse(BaseModel):
+    project_id: str
+    name: str
+    passed: bool
+    checks: list[dict[str, Any]]
+    failed_checks: list[dict[str, Any]]
+
+
 class IntakeChatMessageRequest(BaseModel):
     content: str = Field(min_length=1)
     actor_email: str | None = None
@@ -242,6 +272,82 @@ def approval_escalation_status(approvals: list[dict[str, Any]], blocking_rejecti
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"service": "workflow-service", "status": "ok"}
+
+
+@app.get("/ready")
+def ready() -> dict[str, str]:
+    return {"service": "workflow-service", "status": "ready"}
+
+
+@app.get("/metrics")
+def get_metrics() -> Response:
+    snapshot = project_repository.get_observability_metrics_snapshot()
+    return Response(
+        content=render_prometheus_metrics(snapshot),
+        media_type="text/plain; version=0.0.4",
+    )
+
+
+@app.get("/traces/{project_id}")
+def get_project_traces(project_id: str) -> dict[str, Any]:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail={"error": "project_not_found"})
+
+    return {
+        "project_id": project_id,
+        "traces": project_repository.list_phase_traces(project_id),
+    }
+
+
+@app.get("/observability/retrieval-routing/{project_id}")
+def get_project_retrieval_routing(project_id: str) -> dict[str, Any]:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail={"error": "project_not_found"})
+
+    routing_logs = project_repository.list_retrieval_routing_logs(project_id)
+    return {
+        "project_id": project_id,
+        "routing_log_count": len(routing_logs),
+        "routing_logs": routing_logs,
+    }
+
+
+@app.get("/observability/rubric/{project_id}/{phase}")
+def get_project_rubric_audit(project_id: str, phase: str) -> dict[str, Any]:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail={"error": "project_not_found"})
+
+    scores = project_repository.list_rubric_scores(project_id, phase)
+    return {
+        "project_id": project_id,
+        "phase": phase,
+        "score_count": len(scores),
+        "scores": scores,
+    }
+
+
+def render_prometheus_metrics(snapshot: dict[str, Any]) -> str:
+    metric_names = {
+        "project_count": "pfos_projects_total",
+        "phase_transition_count": "pfos_phase_transitions_total",
+        "approval_count": "pfos_approvals_total",
+        "open_outbox_count": "pfos_open_outbox_items",
+        "failed_outbox_count": "pfos_failed_outbox_items",
+        "open_source_retraction_count": "pfos_open_source_retractions",
+        "retrieval_routing_log_count": "pfos_retrieval_routing_logs_total",
+        "rubric_score_count": "pfos_rubric_scores_total",
+    }
+    lines: list[str] = []
+    for key, metric_name in metric_names.items():
+        value = int(snapshot.get(key, 0))
+        metric_type = "counter" if metric_name.endswith("_total") else "gauge"
+        lines.append(f"# HELP {metric_name} PFOS {key.replace('_', ' ')}.")
+        lines.append(f"# TYPE {metric_name} {metric_type}")
+        lines.append(f"{metric_name} {value}")
+    return "\n".join(lines) + "\n"
 
 
 @app.post("/projects", response_model=CreateProjectResponse)
@@ -378,6 +484,24 @@ def append_intake_chat_message(
     )
 
 
+@app.get("/health/projects/{project_id}/source-retractions", response_model=SourceRetractionStatusResponse)
+def get_project_source_retraction_status(project_id: str) -> SourceRetractionStatusResponse:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail={"error": "project_not_found"})
+
+    status = source_lifecycle_repository.get_project_retraction_cascade_status(project_id)
+
+    return SourceRetractionStatusResponse(
+        project_id=project_id,
+        blocked=status.blocked,
+        pending_count=status.pending_count,
+        processing_count=status.processing_count,
+        failed_count=status.failed_count,
+        oldest_open_age_seconds=status.oldest_open_age_seconds,
+    )
+
+
 @app.get("/health/projects/{project_id}/outbox", response_model=OutboxStatusResponse)
 def get_project_outbox_status(project_id: str) -> OutboxStatusResponse:
     project = project_repository.get_project(project_id)
@@ -392,6 +516,24 @@ def get_project_outbox_status(project_id: str) -> OutboxStatusResponse:
         unprocessed_count=status.unprocessed_count,
         failed_count=status.failed_count,
         oldest_unprocessed_age_seconds=status.oldest_unprocessed_age_seconds,
+    )
+
+
+@app.get("/health/projects/{project_id}/hard-gates", response_model=HardGateStatusResponse)
+def get_project_hard_gate_status(project_id: str) -> HardGateStatusResponse:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail={"error": "project_not_found"})
+
+    result = hard_gate_repository.evaluate_no_blocking_rules(project_id)
+    payload = result.as_payload()
+
+    return HardGateStatusResponse(
+        project_id=project_id,
+        name=str(payload["name"]),
+        passed=bool(payload["passed"]),
+        checks=list(payload["checks"]),
+        failed_checks=list(payload["failed_checks"]),
     )
 
 
@@ -650,10 +792,7 @@ def create_project_thesis_version(
     project_id: str,
     payload: ThesisVersionCreateRequest,
 ) -> dict[str, Any]:
-    from system.db import open_pool
-    from system.thesis_repository import ThesisRepository
-
-    repository = ThesisRepository(open_pool())
+    repository = create_thesis_repository()
     version = repository.create_thesis_version(
         UUID(project_id),
         1,
@@ -672,10 +811,7 @@ def create_project_thesis_version(
 
 @app.get("/projects/{project_id}/thesis-versions/current")
 def get_current_thesis_version(project_id: str) -> dict[str, Any] | None:
-    from system.db import open_pool
-    from system.thesis_repository import ThesisRepository
-
-    repository = ThesisRepository(open_pool())
+    repository = create_thesis_repository()
     version = repository.get_latest_thesis(UUID(project_id))
     if version is None:
         return None
@@ -724,15 +860,12 @@ def start_research_loop(
     project_id: str | None = None,
     payload: ResearchLoopStartRequest | None = None,
 ) -> dict[str, Any]:
-    from system.db import open_pool
-    from system.thesis_repository import ThesisRepository
-
     if payload is None:
         raise HTTPException(status_code=422, detail={"error": "missing_payload"})
     if project_id is None:
         project_id = "00000000-0000-0000-0000-000000000000"
 
-    repository = ThesisRepository(open_pool())
+    repository = create_thesis_repository()
     loop = repository.start_research_loop(UUID(project_id), payload.loop_number)
     return {
         "id": str(loop.id),
@@ -748,10 +881,7 @@ def finalize_research_loop(
     payload: ResearchLoopFinalizeRequest,
     project_id: str | None = None,
 ) -> dict[str, Any]:
-    from system.db import open_pool
-    from system.thesis_repository import ThesisRepository
-
-    repository = ThesisRepository(open_pool())
+    repository = create_thesis_repository()
     repository.finalize_research_loop(
         UUID(loop_id),
         payload.convergence_delta,

@@ -1,41 +1,77 @@
-import subprocess
+from types import SimpleNamespace
 from uuid import UUID
 
+import pytest
 from fastapi.testclient import TestClient
 
+import api.workflow as workflow
 from api.workflow import app
 
 
-COMPOSE = ["docker", "compose", "-f", "docker-compose.apps.yaml"]
 client = TestClient(app)
 
 
-def psql(sql: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [
-            *COMPOSE,
-            "exec",
-            "-T",
-            "postgres",
-            "psql",
-            "-U",
-            "pfos",
-            "-d",
-            "pfos",
-            "-v",
-            "ON_ERROR_STOP=1",
-            "-A",
-            "-t",
-            "-F",
-            "|",
-            "-c",
-            sql,
-        ],
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
+class FakeProjectRepository:
+    def __init__(self) -> None:
+        self.projects: dict[str, SimpleNamespace] = {}
+        self.traces: dict[str, list[dict]] = {}
+        self.routing_logs: dict[str, list[dict]] = {}
+        self.rubric_scores: dict[tuple[str, str], list[dict]] = {}
+
+    def create_project(
+        self,
+        name: str,
+        audience: str,
+        audience_profile: dict,
+        client_name: str | None = None,
+        decision_required: str | None = None,
+        objection_preemption_map: dict | None = None,
+    ) -> SimpleNamespace:
+        project_id = f"project-{len(self.projects) + 1}"
+        project = SimpleNamespace(
+            project_id=project_id,
+            name=name,
+            audience=audience,
+            audience_profile=audience_profile,
+            current_phase="created",
+        )
+        self.projects[project_id] = project
+        return project
+
+    def get_project(self, project_id: str):
+        return self.projects.get(project_id)
+
+    def get_observability_metrics_snapshot(self) -> dict:
+        return {
+            "project_count": len(self.projects),
+            "phase_transition_count": 1,
+            "approval_count": 2,
+            "open_outbox_count": 3,
+            "failed_outbox_count": 4,
+            "open_source_retraction_count": 5,
+            "retrieval_routing_log_count": sum(
+                len(logs) for logs in self.routing_logs.values()
+            ),
+            "rubric_score_count": sum(
+                len(scores) for scores in self.rubric_scores.values()
+            ),
+        }
+
+    def list_phase_traces(self, project_id: str) -> list[dict]:
+        return self.traces.get(project_id, [])
+
+    def list_retrieval_routing_logs(self, project_id: str) -> list[dict]:
+        return self.routing_logs.get(project_id, [])
+
+    def list_rubric_scores(self, project_id: str, phase: str) -> list[dict]:
+        return self.rubric_scores.get((project_id, phase), [])
+
+
+@pytest.fixture
+def fake_project_repository(monkeypatch) -> FakeProjectRepository:
+    repository = FakeProjectRepository()
+    monkeypatch.setattr(workflow, "project_repository", repository)
+    return repository
 
 
 def valid_audience_profile():
@@ -70,106 +106,61 @@ def assert_uuid(value: str) -> None:
     UUID(value)
 
 
-def seed_observability_rows(project_id: str) -> tuple[str, str]:
-    sql = f"""
-    WITH trace AS (
-      INSERT INTO phase_traces (
-        project_id,
-        phase,
-        trace_id,
-        span_name,
-        service_name,
-        started_at,
-        ended_at,
-        duration_ms,
-        status,
-        metadata
-      )
-      VALUES (
-        '{project_id}',
-        'strategy',
-        '11111111-1111-1111-1111-111111111111',
-        'route-evidence',
-        'retrieval-engine',
-        '2026-01-01T00:00:00Z',
-        '2026-01-01T00:00:02Z',
-        2000,
-        'success',
-        '{{"mode":"hybrid"}}'::jsonb
-      )
-      RETURNING trace_id
-    ),
-    routing AS (
-      INSERT INTO retrieval_routing_log (
-        project_id,
-        request_id,
-        query,
-        query_classification,
-        mode,
-        forced_hybrid,
-        escalation_reason,
-        confidence,
-        item_count,
-        gaps,
-        created_at
-      )
-      VALUES (
-        '{project_id}',
-        '22222222-2222-2222-2222-222222222222',
-        'market sizing evidence',
-        'strategic',
-        'hybrid',
-        TRUE,
-        'low_confidence',
-        0.8200,
-        7,
-        '[{{"missing":"customer proof"}}]'::jsonb,
-        '2026-01-01T00:00:03Z'
-      )
-      RETURNING request_id
-    )
-    INSERT INTO rubric_scores (
-      project_id,
-      phase,
-      dimension,
-      score_version,
-      score,
-      weight,
-      evaluator_type,
-      evaluator_model,
-      blocking,
-      threshold,
-      trace_id,
-      created_at
-    )
-    VALUES (
-      '{project_id}',
-      'strategy',
-      'audience_alignment',
-      1,
-      4.25,
-      0.4000,
-      'deterministic',
-      NULL,
-      FALSE,
-      3.50,
-      (SELECT trace_id FROM trace),
-      '2026-01-01T00:00:04Z'
-    )
-    RETURNING (SELECT trace_id FROM trace), (SELECT request_id FROM routing);
-    """
-
-    result = psql(sql)
-    assert result.returncode == 0, result.stderr
-    returned_rows = [line for line in result.stdout.splitlines() if "|" in line]
-    assert returned_rows, result.stdout
-    trace_id, request_id = returned_rows[0].strip().split("|")
+def seed_observability_rows(
+    repository: FakeProjectRepository, project_id: str
+) -> tuple[str, str]:
+    trace_id = "11111111-1111-1111-1111-111111111111"
+    request_id = "22222222-2222-2222-2222-222222222222"
     assert_uuid(trace_id)
     assert_uuid(request_id)
+    repository.traces[project_id] = [
+        {
+            "trace_id": trace_id,
+            "phase": "strategy",
+            "span_name": "route-evidence",
+            "service_name": "retrieval-engine",
+            "started_at": "2026-01-01T00:00:00Z",
+            "ended_at": "2026-01-01T00:00:02Z",
+            "duration_ms": 2000,
+            "status": "success",
+            "metadata": {"mode": "hybrid"},
+        }
+    ]
+    repository.routing_logs[project_id] = [
+        {
+            "request_id": request_id,
+            "query": "market sizing evidence",
+            "query_classification": "strategic",
+            "mode": "hybrid",
+            "forced_hybrid": True,
+            "escalation_reason": "low_confidence",
+            "confidence": 0.82,
+            "item_count": 7,
+            "gaps": [{"missing": "customer proof"}],
+            "created_at": "2026-01-01T00:00:03Z",
+        }
+    ]
+    repository.rubric_scores[(project_id, "strategy")] = [
+        {
+            "dimension": "audience_alignment",
+            "score_version": 1,
+            "score": 4.25,
+            "weight": 0.4,
+            "evaluator_type": "deterministic",
+            "evaluator_model": None,
+            "blocking": False,
+            "threshold": 3.5,
+            "trace_id": trace_id,
+            "created_at": "2026-01-01T00:00:04Z",
+        }
+    ]
     return trace_id, request_id
 
 
-def test_metrics_endpoint_returns_prometheus_snapshot():
+def test_metrics_endpoint_returns_prometheus_snapshot(fake_project_repository):
+    project_id = create_project("Observability Metrics Project")
+    seed_observability_rows(fake_project_repository, project_id)
+
     response = client.get("/metrics")
 
     assert response.status_code == 200
@@ -179,9 +170,9 @@ def test_metrics_endpoint_returns_prometheus_snapshot():
     assert "pfos_retrieval_routing_logs_total " in response.text
 
 
-def test_traces_endpoint_returns_project_phase_traces():
+def test_traces_endpoint_returns_project_phase_traces(fake_project_repository):
     project_id = create_project("Observability Traces Project")
-    trace_id, _ = seed_observability_rows(project_id)
+    trace_id, _ = seed_observability_rows(fake_project_repository, project_id)
 
     response = client.get(f"/traces/{project_id}")
 
@@ -201,9 +192,9 @@ def test_traces_endpoint_returns_project_phase_traces():
     }
 
 
-def test_retrieval_routing_endpoint_returns_project_logs():
+def test_retrieval_routing_endpoint_returns_project_logs(fake_project_repository):
     project_id = create_project("Observability Routing Project")
-    _, request_id = seed_observability_rows(project_id)
+    _, request_id = seed_observability_rows(fake_project_repository, project_id)
 
     response = client.get(f"/observability/retrieval-routing/{project_id}")
 
@@ -225,9 +216,9 @@ def test_retrieval_routing_endpoint_returns_project_logs():
     }
 
 
-def test_rubric_endpoint_returns_phase_scores():
+def test_rubric_endpoint_returns_phase_scores(fake_project_repository):
     project_id = create_project("Observability Rubric Project")
-    trace_id, _ = seed_observability_rows(project_id)
+    trace_id, _ = seed_observability_rows(fake_project_repository, project_id)
 
     response = client.get(f"/observability/rubric/{project_id}/strategy")
 
@@ -250,7 +241,7 @@ def test_rubric_endpoint_returns_phase_scores():
     }
 
 
-def test_observability_endpoints_return_404_for_unknown_project():
+def test_observability_endpoints_return_404_for_unknown_project(fake_project_repository):
     missing_project_id = "00000000-0000-0000-0000-000000000000"
 
     assert client.get(f"/traces/{missing_project_id}").status_code == 404

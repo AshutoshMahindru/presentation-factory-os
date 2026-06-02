@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
 import api.sources as sources
-from api.workflow import app, project_repository
+from api.workflow import app
 
 
 client = TestClient(app)
@@ -50,20 +52,27 @@ class FakeSourceLifecycleEventRepository:
         )
 
 
+class FakeProjectRepository:
+    def __init__(self, existing_project_ids: set[str] | None = None) -> None:
+        self.existing_project_ids = existing_project_ids or set()
+
+    def get_project(self, project_id: str) -> Any | None:
+        if project_id not in self.existing_project_ids:
+            return None
+        return SimpleNamespace(project_id=project_id, current_phase="created")
+
+
 def test_source_lifecycle_event_api_creates_pending_retraction_event(monkeypatch) -> None:
-    project = project_repository.create_project(
-        name="Step 51 Source Lifecycle Event API",
-        audience="Investment committee",
-        audience_profile=VALID_AUDIENCE_PROFILE,
-    )
+    project_id = str(uuid4())
 
     fake_repository = FakeSourceLifecycleEventRepository()
+    monkeypatch.setattr(sources, "project_repository", FakeProjectRepository({project_id}))
     monkeypatch.setattr(sources, "source_lifecycle_event_repository", fake_repository)
 
     response = client.post(
         "/sources/events",
         json={
-            "project_id": project.project_id,
+            "project_id": project_id,
             "source_id": "source-abc",
             "event_type": "retracted",
             "source_version": "v2",
@@ -78,7 +87,7 @@ def test_source_lifecycle_event_api_creates_pending_retraction_event(monkeypatch
 
     assert body == {
         "event_id": "event-123",
-        "project_id": project.project_id,
+        "project_id": project_id,
         "source_id": "source-abc",
         "event_type": "retracted",
         "processing_status": "pending",
@@ -86,7 +95,7 @@ def test_source_lifecycle_event_api_creates_pending_retraction_event(monkeypatch
 
     assert fake_repository.calls == [
         {
-            "project_id": project.project_id,
+            "project_id": project_id,
             "source_id": "source-abc",
             "event_type": "retracted",
             "event_payload": {"reason": "withdrawn by publisher"},
@@ -98,7 +107,9 @@ def test_source_lifecycle_event_api_creates_pending_retraction_event(monkeypatch
     ]
 
 
-def test_source_lifecycle_event_api_404_for_unknown_project() -> None:
+def test_source_lifecycle_event_api_404_for_unknown_project(monkeypatch) -> None:
+    monkeypatch.setattr(sources, "project_repository", FakeProjectRepository())
+
     response = client.post(
         "/sources/events",
         json={
@@ -113,22 +124,19 @@ def test_source_lifecycle_event_api_404_for_unknown_project() -> None:
 
 
 def test_source_lifecycle_event_api_422_for_invalid_event_type(monkeypatch) -> None:
-    project = project_repository.create_project(
-        name="Step 51 Invalid Event Type",
-        audience="Investment committee",
-        audience_profile=VALID_AUDIENCE_PROFILE,
-    )
+    project_id = str(uuid4())
 
     class RejectingRepository:
         def create_event(self, **kwargs: Any) -> FakeEvent:
             raise ValueError("Unsupported lifecycle event_type: not_real")
 
+    monkeypatch.setattr(sources, "project_repository", FakeProjectRepository({project_id}))
     monkeypatch.setattr(sources, "source_lifecycle_event_repository", RejectingRepository())
 
     response = client.post(
         "/sources/events",
         json={
-            "project_id": project.project_id,
+            "project_id": project_id,
             "source_id": "source-abc",
             "event_type": "not_real",
         },

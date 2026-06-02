@@ -56,7 +56,8 @@ docker-reset-dev:
 docker-doctor:
 	$(PYTHON) scripts/check_docker_env.py --compose-project-name "$(COMPOSE_PROJECT_NAME)" --compose-file "$(COMPOSE_FILE)"
 
-validate-live: docker-up validate-sql-live docker-doctor validate
+validate-live: docker-up validate-sql-live docker-doctor
+	PFOS_RUN_LIVE_TESTS=1 $(MAKE) validate
 
 validate-sql-live:
 	$(DOCKER_COMPOSE) exec -T postgres psql -U pfos -d pfos -f infra/postgres/init/001_schema.sql

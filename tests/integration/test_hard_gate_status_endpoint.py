@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from fastapi.testclient import TestClient
 
 import api.workflow as workflow
-from api.workflow import app, project_repository
+from api.workflow import app
 from system.hard_gate_repository import HardGateBundleResult, HardGateCheckResult
 
 
@@ -34,12 +36,16 @@ class FakeHardGateRepository:
         return self.result
 
 
+class FakeProjectRepository:
+    def __init__(self, projects: dict[str, object]) -> None:
+        self.projects = projects
+
+    def get_project(self, project_id: str) -> object | None:
+        return self.projects.get(project_id)
+
+
 def test_hard_gate_status_endpoint_reports_pass(monkeypatch) -> None:
-    project = project_repository.create_project(
-        name="Step 50 Hard Gate Status Pass",
-        audience="Investment committee",
-        audience_profile=VALID_AUDIENCE_PROFILE,
-    )
+    project = SimpleNamespace(project_id="hard-gate-pass-project")
 
     fake_repository = FakeHardGateRepository(
         HardGateBundleResult(
@@ -50,6 +56,11 @@ def test_hard_gate_status_endpoint_reports_pass(monkeypatch) -> None:
                 HardGateCheckResult("no_stale_downstream_artifacts", True),
             ),
         )
+    )
+    monkeypatch.setattr(
+        workflow,
+        "project_repository",
+        FakeProjectRepository({project.project_id: project}),
     )
     monkeypatch.setattr(workflow, "hard_gate_repository", fake_repository)
 
@@ -66,11 +77,7 @@ def test_hard_gate_status_endpoint_reports_pass(monkeypatch) -> None:
 
 
 def test_hard_gate_status_endpoint_reports_failure(monkeypatch) -> None:
-    project = project_repository.create_project(
-        name="Step 50 Hard Gate Status Failure",
-        audience="Investment committee",
-        audience_profile=VALID_AUDIENCE_PROFILE,
-    )
+    project = SimpleNamespace(project_id="hard-gate-failure-project")
 
     fake_repository = FakeHardGateRepository(
         HardGateBundleResult(
@@ -85,6 +92,11 @@ def test_hard_gate_status_endpoint_reports_failure(monkeypatch) -> None:
                 ),
             ),
         )
+    )
+    monkeypatch.setattr(
+        workflow,
+        "project_repository",
+        FakeProjectRepository({project.project_id: project}),
     )
     monkeypatch.setattr(workflow, "hard_gate_repository", fake_repository)
 
@@ -103,7 +115,9 @@ def test_hard_gate_status_endpoint_reports_failure(monkeypatch) -> None:
     ]
 
 
-def test_hard_gate_status_endpoint_404_for_unknown_project() -> None:
+def test_hard_gate_status_endpoint_404_for_unknown_project(monkeypatch) -> None:
+    monkeypatch.setattr(workflow, "project_repository", FakeProjectRepository({}))
+
     response = client.get("/health/projects/00000000-0000-0000-0000-000000000000/hard-gates")
 
     assert response.status_code == 404

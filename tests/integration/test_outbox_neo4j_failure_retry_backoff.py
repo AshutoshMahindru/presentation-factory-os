@@ -1,7 +1,14 @@
+import os
 import subprocess
+
+import pytest
 
 
 COMPOSE = ["docker", "compose", "-f", "docker-compose.apps.yaml"]
+pytestmark = pytest.mark.skipif(
+    os.environ.get("PFOS_RUN_LIVE_TESTS") != "1",
+    reason="Live Docker/Postgres/Neo4j smoke test; set PFOS_RUN_LIVE_TESTS=1",
+)
 
 
 def psql(sql: str) -> subprocess.CompletedProcess[str]:
@@ -62,6 +69,7 @@ def test_outbox_failure_increments_error_count_and_records_error():
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        timeout=30,
         check=False,
     )
 

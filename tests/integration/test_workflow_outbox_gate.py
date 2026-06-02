@@ -1,6 +1,8 @@
+import os
 import subprocess
 from uuid import UUID
 
+import pytest
 from fastapi.testclient import TestClient
 
 from api.workflow import app
@@ -8,6 +10,10 @@ from api.workflow import app
 
 COMPOSE = ["docker", "compose", "-f", "docker-compose.apps.yaml"]
 client = TestClient(app)
+pytestmark = pytest.mark.skipif(
+    os.environ.get("PFOS_RUN_LIVE_TESTS") != "1",
+    reason="Live Docker/Postgres/Neo4j smoke test; set PFOS_RUN_LIVE_TESTS=1",
+)
 
 
 def psql(sql: str) -> subprocess.CompletedProcess[str]:
@@ -141,6 +147,7 @@ def test_phase_transition_passes_after_outbox_worker_drains_rows():
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        timeout=30,
         check=False,
     )
     assert worker.returncode == 0, worker.stderr

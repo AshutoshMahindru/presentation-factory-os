@@ -1,12 +1,20 @@
+import os
 import subprocess
 import time
 from uuid import UUID
+
+import pytest
 
 from jobs.outbox_worker import OutboxWorker
 from jobs.source_retraction_job import SourceRetractionJob
 from system.outbox_repository import OutboxRepository, PendingOutboxRow
 from system.source_lifecycle_repository import SourceLifecycleRepository
 
+
+pytestmark = pytest.mark.skipif(
+    os.environ.get("PFOS_RUN_LIVE_TESTS") != "1",
+    reason="Live Docker/Postgres load test; set PFOS_RUN_LIVE_TESTS=1",
+)
 
 COMPOSE = ["docker", "compose", "-f", "docker-compose.apps.yaml"]
 SOURCE_RETRACTION_COUNT = 100

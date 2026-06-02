@@ -1,10 +1,18 @@
+import os
 import subprocess
 import time
 from uuid import UUID
 
+import pytest
+
 from jobs.outbox_worker import OutboxWorker
 from system.outbox_repository import OutboxRepository, PendingOutboxRow
 
+
+pytestmark = pytest.mark.skipif(
+    os.environ.get("PFOS_RUN_LIVE_TESTS") != "1",
+    reason="Live Docker/Postgres load test; set PFOS_RUN_LIVE_TESTS=1",
+)
 
 COMPOSE = ["docker", "compose", "-f", "docker-compose.apps.yaml"]
 OUTBOX_ITEM_COUNT = 50

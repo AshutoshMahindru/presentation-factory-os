@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 
+import pytest
 from fastapi.testclient import TestClient
 
 
@@ -14,6 +15,11 @@ from jobs.outbox_worker import OutboxWorker  # noqa: E402
 from system.outbox_repository import OutboxRepository  # noqa: E402
 from system.source_lifecycle_event_repository import SourceLifecycleEventRepository  # noqa: E402
 
+
+pytestmark = pytest.mark.skipif(
+    os.environ.get("PFOS_RUN_LIVE_TESTS") != "1",
+    reason="Live Docker/Postgres/Neo4j smoke test; set PFOS_RUN_LIVE_TESTS=1",
+)
 
 client = TestClient(app)
 
