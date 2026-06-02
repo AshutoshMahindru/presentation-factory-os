@@ -379,6 +379,40 @@ CREATE INDEX IF NOT EXISTS idx_financial_scenarios_spec
     ON financial_scenarios (spec_id, status);
 
 
+-- Step 110: Canonical Financial Repository (thesis-linked)
+
+CREATE TABLE IF NOT EXISTS financial_cells (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    thesis_pillar_id UUID REFERENCES thesis_pillars(id) ON DELETE SET NULL,
+    promoted_from_spec UUID REFERENCES financial_model_specs(id) ON DELETE SET NULL,
+    scenario TEXT NOT NULL,
+    cell_ref TEXT NOT NULL,
+    label TEXT NOT NULL,
+    value NUMERIC NOT NULL,
+    unit TEXT,
+    formula TEXT NOT NULL,
+    source_refs TEXT[] NOT NULL DEFAULT '{}',
+    ingestion_source_type TEXT NOT NULL DEFAULT 'manual_compiler',
+    parser_provenance JSONB NOT NULL DEFAULT '{}'::jsonb,
+    phase_scope_version INTEGER,
+    artifact_status TEXT NOT NULL DEFAULT 'active'
+        CHECK (artifact_status IN ('active', 'stale_due_to_retreat', 'archived', 'blocked')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (project_id, scenario, cell_ref)
+);
+
+CREATE INDEX IF NOT EXISTS idx_financial_cells_project
+    ON financial_cells (project_id, scenario);
+CREATE INDEX IF NOT EXISTS idx_financial_cells_pillar
+    ON financial_cells (thesis_pillar_id);
+CREATE INDEX IF NOT EXISTS idx_financial_cells_spec
+    ON financial_cells (promoted_from_spec);
+CREATE INDEX IF NOT EXISTS idx_financial_cells_status
+    ON financial_cells (project_id, artifact_status);
+
+
 -- Step 101: Source Register & Thesis Registry Schema
 
 CREATE TABLE IF NOT EXISTS source_register (
@@ -477,3 +511,37 @@ CREATE TABLE IF NOT EXISTS financial_scenarios (
 
 CREATE INDEX IF NOT EXISTS idx_financial_scenarios_spec
     ON financial_scenarios (spec_id, status);
+
+
+-- Step 110: Canonical Financial Repository (thesis-linked)
+
+CREATE TABLE IF NOT EXISTS financial_cells (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    thesis_pillar_id UUID REFERENCES thesis_pillars(id) ON DELETE SET NULL,
+    promoted_from_spec UUID REFERENCES financial_model_specs(id) ON DELETE SET NULL,
+    scenario TEXT NOT NULL,
+    cell_ref TEXT NOT NULL,
+    label TEXT NOT NULL,
+    value NUMERIC NOT NULL,
+    unit TEXT,
+    formula TEXT NOT NULL,
+    source_refs TEXT[] NOT NULL DEFAULT '{}',
+    ingestion_source_type TEXT NOT NULL DEFAULT 'manual_compiler',
+    parser_provenance JSONB NOT NULL DEFAULT '{}'::jsonb,
+    phase_scope_version INTEGER,
+    artifact_status TEXT NOT NULL DEFAULT 'active'
+        CHECK (artifact_status IN ('active', 'stale_due_to_retreat', 'archived', 'blocked')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (project_id, scenario, cell_ref)
+);
+
+CREATE INDEX IF NOT EXISTS idx_financial_cells_project
+    ON financial_cells (project_id, scenario);
+CREATE INDEX IF NOT EXISTS idx_financial_cells_pillar
+    ON financial_cells (thesis_pillar_id);
+CREATE INDEX IF NOT EXISTS idx_financial_cells_spec
+    ON financial_cells (promoted_from_spec);
+CREATE INDEX IF NOT EXISTS idx_financial_cells_status
+    ON financial_cells (project_id, artifact_status);
