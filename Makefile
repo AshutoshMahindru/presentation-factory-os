@@ -1,4 +1,4 @@
-.PHONY: compile test no-agent-db-imports codegen-phase-enums validate validate-json validate-yaml validate-sql-drift validate-phase-enums smoke-source-lifecycle-outbox docker-ps docker-up docker-down docker-reset-dev docker-doctor validate-live validate-sql-live validate-cypher-live
+.PHONY: compile test no-agent-db-imports codegen-phase-enums validate validate-json validate-yaml validate-sql-drift validate-sql-canonical validate-phase-enums smoke-source-lifecycle-outbox docker-ps docker-up docker-down docker-reset-dev docker-doctor validate-live validate-sql-live validate-cypher-live
 
 PYTHON ?= python3
 PYTEST ?= $(PYTHON) -m pytest
@@ -34,10 +34,10 @@ validate-json:
 validate-yaml:
 	$(PYTHON) scripts/validate_yaml.py
 
-validate-sql-drift:
+validate-sql-drift validate-sql-canonical:
 	$(PYTHON) scripts/check_postgres_schema_drift.py
 
-validate: compile validate-json validate-yaml validate-sql-drift validate-phase-enums no-agent-db-imports test
+validate: compile validate-json validate-yaml validate-sql-drift validate-sql-canonical validate-phase-enums no-agent-db-imports test
 
 docker-ps:
 	$(DOCKER_COMPOSE) ps
@@ -59,11 +59,13 @@ docker-doctor:
 validate-live: docker-up validate-sql-live docker-doctor validate
 
 validate-sql-live:
+	$(DOCKER_COMPOSE) exec -T postgres psql -U pfos -d pfos -f infra/postgres/init/001_schema.sql
 	$(DOCKER_COMPOSE) cp infra/postgres/init/001_schema.sql postgres:/tmp/001_schema.sql
 	$(DOCKER_COMPOSE) exec -T postgres sh -lc 'for i in $$(seq 1 30); do pg_isready -U pfos -d pfos >/dev/null 2>&1 && exit 0; sleep 1; done; pg_isready -U pfos -d pfos'
 	$(DOCKER_COMPOSE) exec -T postgres psql -U pfos -d pfos -f /tmp/001_schema.sql
 
 
 validate-cypher-live:
+	$(DOCKER_COMPOSE) exec -T neo4j cypher-shell -u neo4j -p pfos_neo4j_password < tests/cypher/validate_constraints.cypher
 	$(DOCKER_COMPOSE) cp infra/neo4j/constraints.cypher neo4j:/tmp/constraints.cypher
 	$(DOCKER_COMPOSE) exec -T neo4j cypher-shell -u neo4j -p pfos_neo4j_password --file /tmp/constraints.cypher
