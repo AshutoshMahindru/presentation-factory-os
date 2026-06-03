@@ -1,0 +1,18 @@
+{
+  "name": "presentation-factory-os",
+  "private": true,
+  "workspaces": [
+    "ui"
+  ],
+  "scripts": {
+    "validate-ui": "npm --workspace ui run validate"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "8.5.15"
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

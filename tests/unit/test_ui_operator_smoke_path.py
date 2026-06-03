@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -201,10 +202,26 @@ def test_export_readiness_panel_surfaces_delivery_blockers() -> None:
     assert "export default ExportReadinessPanel" in export_readiness
 
 
-def test_static_ui_smoke_does_not_assume_unconfigured_frontend_tooling() -> None:
-    package_json = read_repo_file("package.json")
+def test_static_ui_smoke_confirms_frontend_validation_tooling() -> None:
+    package_json = json.loads(read_repo_file("package.json"))
+    ui_package_json = json.loads(read_repo_file("ui/package.json"))
+    makefile = read_repo_file("Makefile")
 
-    assert package_json == ""
+    assert package_json["workspaces"] == ["ui"]
+    assert package_json["scripts"]["validate-ui"] == "npm --workspace ui run validate"
+    assert ui_package_json["scripts"]["validate"] == (
+        "npm run typecheck && npm run lint && npm run build && npm run test:e2e"
+    )
+    assert "validate-ui:" in makefile
+    assert "validate: validate-python validate-ui" in makefile
+    for path in [
+        "ui/tsconfig.json",
+        "ui/next.config.mjs",
+        "ui/eslint.config.mjs",
+        "ui/playwright.config.ts",
+        "ui/tests/e2e/operator.spec.ts",
+    ]:
+        assert (ROOT / path).is_file()
 
 
 def test_operator_ui_components_do_not_introduce_fake_data_paths() -> None:

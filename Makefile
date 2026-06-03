@@ -1,4 +1,4 @@
-.PHONY: compile test no-agent-db-imports codegen-phase-enums validate validate-json validate-yaml validate-sql-drift validate-sql-canonical validate-phase-enums smoke-source-lifecycle-outbox docker-ps docker-up docker-down docker-reset-dev docker-doctor validate-live validate-sql-live validate-cypher-live
+.PHONY: compile test no-agent-db-imports codegen-phase-enums validate validate-python validate-ui validate-json validate-yaml validate-sql-drift validate-sql-canonical validate-phase-enums smoke-source-lifecycle-outbox docker-ps docker-up docker-down docker-reset-dev docker-doctor validate-live validate-sql-live validate-cypher-live
 
 PYTHON ?= python3
 PYTEST ?= $(PYTHON) -m pytest
@@ -40,7 +40,14 @@ validate-sql-drift:
 validate-sql-canonical:
 	$(PYTHON) scripts/check_sql_canonical.py
 
-validate: compile validate-json validate-yaml validate-sql-drift validate-sql-canonical validate-phase-enums no-agent-db-imports test
+validate-python: compile validate-json validate-yaml validate-sql-drift validate-sql-canonical validate-phase-enums no-agent-db-imports test
+
+validate-ui:
+	npm ci
+	npm --workspace ui exec playwright install chromium
+	npm --workspace ui run validate
+
+validate: validate-python validate-ui
 
 docker-ps:
 	$(DOCKER_COMPOSE) ps

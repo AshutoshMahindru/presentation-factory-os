@@ -1,0 +1,32 @@
+{
+  "name": "@pfos/ui",
+  "private": true,
+  "version": "3.2.4",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "build": "next build",
+    "start": "next start",
+    "test:e2e": "playwright test",
+    "validate": "npm run typecheck && npm run lint && npm run build && npm run test:e2e"
+  },
+  "dependencies": {
+    "next": "^16.3.0-canary.38",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@next/eslint-plugin-next": "^16.0.0",
+    "@playwright/test": "^1.56.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^16.0.0",
+    "postcss": "^8.5.15",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.0.0"
+  }
+}

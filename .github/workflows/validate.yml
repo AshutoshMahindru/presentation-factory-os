@@ -18,6 +18,7 @@ permissions:
 
 env:
   PYTHON_VERSION: "3.14"
+  NODE_VERSION: "22"
   COMPOSE_PROJECT_NAME: pfos-ci
   COMPOSE_FILE: docker-compose.apps.yaml
 
@@ -36,22 +37,25 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
 
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
       - name: Install project
         run: |
           python -m pip install --upgrade pip
           pip install -e .
 
-      - name: Validate YAML
-        run: python scripts/validate_yaml.py
+      - name: Install UI dependencies
+        run: npm ci
 
-      - name: Validate JSON schemas
-        run: make validate-json
+      - name: Install Playwright browser
+        run: npm --workspace ui exec playwright install --with-deps chromium
 
-      - name: Compile Python packages
-        run: make compile
-
-      - name: Enforce agent datastore boundary
-        run: make no-agent-db-imports
+      - name: Run full static validation
+        run: make validate
 
   integration:
     name: Service-backed validation
@@ -99,7 +103,7 @@ jobs:
         run: make docker-doctor
 
       - name: Run full validation suite
-        run: make validate
+        run: make validate-python
 
       - name: Run API and control-plane integration tests
         run: |
