@@ -15,3 +15,4 @@ files_expected:
   - tests/unit/test_render_python_pptx.py
   - .pfos/baby_steps/146_export_metadata_auto_build.yaml
 source_plan: PFOS v2.0 clean integer sequence realignment
+status: implemented

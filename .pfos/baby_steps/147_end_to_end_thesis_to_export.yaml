@@ -12,3 +12,4 @@ files_expected:
   - tests/integration/test_end_to_end_thesis_to_export.py
   - .pfos/baby_steps/147_end_to_end_thesis_to_export.yaml
 source_plan: PFOS v2.0 clean integer sequence realignment
+status: implemented

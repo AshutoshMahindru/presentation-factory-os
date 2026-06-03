@@ -49,6 +49,7 @@ def test_invalid_slide_job_returns_blocked_reason():
 def test_build_export_metadata_maps_slides_claims_sources_and_financial_cells():
     slide = valid_slide_payload()
     slide["content"]["financial_refs"] = ["FM!CM_M18_BASE"]
+    slide["content"]["evidence_refs"] = ["source_001"]
 
     metadata = build_export_metadata(
         slides=[slide],
@@ -69,9 +70,31 @@ def test_build_export_metadata_maps_slides_claims_sources_and_financial_cells():
         "metadata_type": "deck_export_metadata",
         "schema_version": "1.0",
         "slide_id_to_claim_refs": {"slide_001": ["claim_001", "claim_002"]},
+        "slide_id_to_evidence_refs": {"slide_001": ["source_001"]},
+        "slide_id_to_financial_refs": {"slide_001": ["FM!CM_M18_BASE"]},
+        "slide_id_to_materiality": {"slide_001": "high"},
         "claim_refs_to_source_refs": {
             "claim_001": ["source_001", "source_002"],
             "claim_002": ["source_003"],
+        },
+        "source_refs_to_claim_refs": {
+            "source_001": ["claim_001"],
+            "source_002": ["claim_001"],
+            "source_003": ["claim_002"],
+        },
+        "source_appendix": {
+            "source_001": {
+                "claim_refs": ["claim_001"],
+                "slide_ids": ["slide_001"],
+            },
+            "source_002": {
+                "claim_refs": ["claim_001"],
+                "slide_ids": ["slide_001"],
+            },
+            "source_003": {
+                "claim_refs": ["claim_002"],
+                "slide_ids": ["slide_001"],
+            },
         },
         "financial_refs_to_financial_cells": {
             "FM!CM_M18_BASE": {
@@ -79,4 +102,23 @@ def test_build_export_metadata_maps_slides_claims_sources_and_financial_cells():
                 "validation_status": "validated",
             }
         },
+    }
+
+
+def test_build_export_metadata_includes_direct_evidence_without_claim_mapping():
+    slide = valid_slide_payload()
+    slide["content"]["evidence_refs"] = ["source_direct"]
+
+    metadata = build_export_metadata(
+        slides=[slide],
+        slide_claim_refs={},
+        claim_source_refs={},
+        financial_cells={},
+    )
+
+    assert metadata["source_appendix"] == {
+        "source_direct": {
+            "claim_refs": [],
+            "slide_ids": ["slide_001"],
+        }
     }

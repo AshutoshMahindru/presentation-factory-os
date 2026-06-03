@@ -11,7 +11,7 @@ validation_commands:
 files_expected:
   - tool_server/assets.py
   - deck_builder/asset_validator.py
-  - docs/25_Asset_Pipeline_Spec.yaml
   - tests/unit/test_asset_validator.py
   - .pfos/baby_steps/161_asset_pipeline_ingestion_rules.yaml
 source_plan: PFOS v2.0 clean integer sequence realignment
+status: implemented

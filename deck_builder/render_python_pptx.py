@@ -72,25 +72,60 @@ def build_export_metadata(
     """
 
     slide_to_claim_refs: dict[str, list[str]] = {}
+    slide_to_evidence_refs: dict[str, list[str]] = {}
+    slide_to_financial_refs: dict[str, list[str]] = {}
+    slide_to_materiality: dict[str, str] = {}
     claim_refs_to_source_refs: dict[str, list[str]] = {}
     financial_refs_to_cells: dict[str, dict[str, Any] | None] = {}
+    source_refs_to_claim_refs: dict[str, set[str]] = {}
+    source_refs_to_slide_ids: dict[str, set[str]] = {}
 
     for slide in slides:
         slide_id = str(slide["slide_id"])
         claim_refs = sorted(slide_claim_refs.get(slide_id, []))
         slide_to_claim_refs[slide_id] = claim_refs
+        slide_to_materiality[slide_id] = str(slide.get("materiality", ""))
+
+        content = slide.get("content", {})
+        evidence_refs = sorted(str(ref) for ref in content.get("evidence_refs", []) or [])
+        financial_refs = sorted(str(ref) for ref in content.get("financial_refs", []) or [])
+        slide_to_evidence_refs[slide_id] = evidence_refs
+        slide_to_financial_refs[slide_id] = financial_refs
 
         for claim_ref in claim_refs:
-            claim_refs_to_source_refs[claim_ref] = sorted(claim_source_refs.get(claim_ref, []))
+            source_refs = sorted(claim_source_refs.get(claim_ref, []))
+            claim_refs_to_source_refs[claim_ref] = source_refs
+            for source_ref in source_refs:
+                source_refs_to_claim_refs.setdefault(source_ref, set()).add(claim_ref)
+                source_refs_to_slide_ids.setdefault(source_ref, set()).add(slide_id)
 
-        for financial_ref in sorted(slide.get("content", {}).get("financial_refs", []) or []):
+        for evidence_ref in evidence_refs:
+            source_refs_to_slide_ids.setdefault(evidence_ref, set()).add(slide_id)
+
+        for financial_ref in financial_refs:
             financial_refs_to_cells[financial_ref] = financial_cells.get(financial_ref)
+
+    source_appendix = {
+        source_ref: {
+            "claim_refs": sorted(source_refs_to_claim_refs.get(source_ref, set())),
+            "slide_ids": sorted(source_refs_to_slide_ids.get(source_ref, set())),
+        }
+        for source_ref in sorted(source_refs_to_slide_ids)
+    }
 
     return {
         "metadata_type": "deck_export_metadata",
         "schema_version": "1.0",
         "slide_id_to_claim_refs": slide_to_claim_refs,
+        "slide_id_to_evidence_refs": slide_to_evidence_refs,
+        "slide_id_to_financial_refs": slide_to_financial_refs,
+        "slide_id_to_materiality": slide_to_materiality,
         "claim_refs_to_source_refs": dict(sorted(claim_refs_to_source_refs.items())),
+        "source_refs_to_claim_refs": {
+            source_ref: sorted(claim_refs)
+            for source_ref, claim_refs in sorted(source_refs_to_claim_refs.items())
+        },
+        "source_appendix": source_appendix,
         "financial_refs_to_financial_cells": dict(sorted(financial_refs_to_cells.items())),
     }
 

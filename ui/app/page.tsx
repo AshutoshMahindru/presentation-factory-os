@@ -3,9 +3,16 @@
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
 
+import { AudienceIntakeForm } from "../components/AudienceIntakeForm";
+import { PersonaSelector } from "../components/PersonaSelector";
 import { ProjectHealth } from "../components/ProjectHealth";
 import { ApiClientError, createPfosApiClient } from "../lib/api";
-import type { ApprovalStatus, PfosPhase, ProjectControlPlaneHealth } from "../lib/api";
+import type {
+  ApprovalStatus,
+  CreateProjectResponse,
+  PfosPhase,
+  ProjectControlPlaneHealth,
+} from "../lib/api";
 
 const PHASE_OPTIONS: Array<PfosPhase | string> = [
   "intake",
@@ -31,6 +38,7 @@ export default function ProjectDashboardPage() {
   const [phase, setPhase] = useState<PfosPhase | string>("review");
   const [health, setHealth] = useState<ProjectControlPlaneHealth | null>(null);
   const [approvalStatus, setApprovalStatus] = useState<ApprovalStatus | null>(null);
+  const [createdProject, setCreatedProject] = useState<CreateProjectResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -75,6 +83,11 @@ export default function ProjectDashboardPage() {
     void loadDashboard();
   }
 
+  function handleProjectCreated(project: CreateProjectResponse) {
+    setCreatedProject(project);
+    setProjectId(project.project_id);
+  }
+
   return (
     <main className="pfos-dashboard-page">
       <section className="pfos-dashboard-shell" aria-labelledby="dashboard-heading">
@@ -84,6 +97,17 @@ export default function ProjectDashboardPage() {
             <h1 id="dashboard-heading">Operator control plane</h1>
           </div>
         </header>
+
+        <div className="pfos-dashboard-intake-grid">
+          <AudienceIntakeForm onProjectCreated={handleProjectCreated} />
+          <PersonaSelector />
+        </div>
+
+        {createdProject ? (
+          <p className="pfos-dashboard-created" role="status">
+            Latest intake project: {createdProject.project_id}
+          </p>
+        ) : null}
 
         <form className="pfos-dashboard-query" onSubmit={handleSubmit}>
           <label>
@@ -149,6 +173,140 @@ export default function ProjectDashboardPage() {
 
         .pfos-dashboard-header {
           margin-bottom: 24px;
+        }
+
+        .pfos-dashboard-intake-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+          gap: 16px;
+          margin-bottom: 16px;
+        }
+
+        .pfos-intake-panel,
+        .pfos-persona-panel {
+          background: #ffffff;
+          border: 1px solid #dce2ea;
+          border-radius: 8px;
+          padding: 16px;
+        }
+
+        .pfos-intake-panel header,
+        .pfos-persona-panel header {
+          margin-bottom: 14px;
+        }
+
+        .pfos-intake-panel h2,
+        .pfos-persona-panel h2 {
+          font-size: 20px;
+          margin: 0;
+        }
+
+        .pfos-intake-form {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+        }
+
+        .pfos-intake-form label {
+          display: grid;
+          gap: 6px;
+          min-width: 0;
+        }
+
+        .pfos-intake-form-wide {
+          grid-column: 1 / -1;
+        }
+
+        .pfos-intake-form span,
+        .pfos-persona-summary dt {
+          color: #536176;
+          font-size: 12px;
+          font-weight: 700;
+        }
+
+        .pfos-intake-form input,
+        .pfos-intake-form textarea {
+          border: 1px solid #c8d1dd;
+          border-radius: 6px;
+          color: #18202f;
+          font: inherit;
+          padding: 10px 12px;
+        }
+
+        .pfos-intake-form button {
+          min-height: 40px;
+          border: 0;
+          border-radius: 6px;
+          background: #147d64;
+          color: #ffffff;
+          cursor: pointer;
+          font: inherit;
+          font-weight: 700;
+          padding: 0 16px;
+        }
+
+        .pfos-intake-form button:disabled {
+          cursor: default;
+          opacity: 0.62;
+        }
+
+        .pfos-intake-status,
+        .pfos-dashboard-created {
+          color: #405168;
+          font-size: 13px;
+          margin: 12px 0 0;
+        }
+
+        .pfos-dashboard-created {
+          margin-bottom: 16px;
+        }
+
+        .pfos-persona-options {
+          display: grid;
+          gap: 8px;
+        }
+
+        .pfos-persona-options button {
+          align-items: center;
+          background: #f7f9fc;
+          border: 1px solid #cfd8e3;
+          border-radius: 6px;
+          color: #18202f;
+          cursor: pointer;
+          display: flex;
+          font: inherit;
+          justify-content: space-between;
+          min-height: 42px;
+          padding: 0 12px;
+          text-align: left;
+        }
+
+        .pfos-persona-options button.selected {
+          background: #eaf3ff;
+          border-color: #1f6feb;
+        }
+
+        .pfos-persona-options span {
+          color: #536176;
+          font-size: 12px;
+          font-weight: 700;
+        }
+
+        .pfos-persona-summary {
+          display: grid;
+          gap: 8px;
+          margin: 14px 0 0;
+        }
+
+        .pfos-persona-summary div {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+        }
+
+        .pfos-persona-summary dd {
+          margin: 0;
+          text-align: right;
         }
 
         .pfos-kicker {
@@ -242,6 +400,11 @@ export default function ProjectDashboardPage() {
           }
 
           .pfos-dashboard-query {
+            grid-template-columns: 1fr;
+          }
+
+          .pfos-dashboard-intake-grid,
+          .pfos-intake-form {
             grid-template-columns: 1fr;
           }
         }

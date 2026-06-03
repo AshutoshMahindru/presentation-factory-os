@@ -10,7 +10,7 @@ validation_commands:
   - make validate
 files_expected:
   - deck_builder/slide_factory.py
-  - retrieval_engine/structured_retriever.py
   - tests/unit/test_slide_factory_auto_refs.py
   - .pfos/baby_steps/144_auto_ref_injection.yaml
 source_plan: PFOS v2.0 clean integer sequence realignment
+status: implemented

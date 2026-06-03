@@ -30,6 +30,61 @@ export interface ApiClientOptions {
   fetchImpl?: typeof fetch;
 }
 
+export interface StakeholderProfile {
+  role: string;
+  concern: string;
+  influence_level?: string;
+}
+
+export interface AudienceProfilePayload {
+  decision_maker_type: string;
+  risk_tolerance: string;
+  familiarity_with_topic: string;
+  known_objections: string[];
+  stakeholder_map: StakeholderProfile[];
+}
+
+export interface CreateProjectPayload {
+  name: string;
+  audience: string;
+  audience_profile: AudienceProfilePayload;
+  client_name?: string | null;
+  decision_required?: string | null;
+  objection_preemption_map?: JsonObject;
+}
+
+export interface CreateProjectResponse {
+  project_id: string;
+  phase: PfosPhase | string;
+  audience_profile_valid: boolean;
+}
+
+export interface IntakeChatMessage {
+  message_id?: string;
+  project_id: string;
+  turn_index: number;
+  role: "user" | "assistant" | string;
+  content: string;
+  actor_email?: string | null;
+  metadata: JsonObject;
+  created_at?: string | null;
+}
+
+export interface IntakeChatTurnResponse {
+  project_id: string;
+  status: string;
+  user_message: IntakeChatMessage;
+  assistant_message: IntakeChatMessage | null;
+  source_turn_count: number;
+  proposal: JsonObject;
+}
+
+export interface IntakeChatMessagesResponse {
+  project_id: string;
+  message_count: number;
+  messages: IntakeChatMessage[];
+}
+
 export interface ServiceProbeStatus {
   service: string;
   status: string;
@@ -158,6 +213,15 @@ export class ApiClientError extends Error {
 }
 
 export interface PfosApiClient {
+  createProject(payload: CreateProjectPayload): Promise<CreateProjectResponse>;
+  appendIntakeChatMessage(
+    projectId: string,
+    payload: { content: string; actor_email?: string | null; metadata?: JsonObject },
+  ): Promise<IntakeChatTurnResponse>;
+  listIntakeChatMessages(
+    projectId: string,
+    options?: { limit?: number; afterTurnIndex?: number },
+  ): Promise<IntakeChatMessagesResponse>;
   getServiceHealth(): Promise<ServiceProbeStatus>;
   getServiceReadiness(): Promise<ServiceProbeStatus>;
   getProjectOutboxStatus(projectId: string): Promise<ProjectOutboxStatus>;
@@ -250,6 +314,52 @@ export function createPfosApiClient(options: ApiClientOptions = {}): PfosApiClie
   }
 
   return {
+    createProject(payload: CreateProjectPayload): Promise<CreateProjectResponse> {
+      return request<CreateProjectResponse>("/projects", {
+        method: "POST",
+        body: JSON.stringify({
+          ...payload,
+          client_name: payload.client_name ?? null,
+          decision_required: payload.decision_required ?? null,
+          objection_preemption_map: payload.objection_preemption_map ?? {},
+        }),
+      });
+    },
+
+    appendIntakeChatMessage(
+      projectId: string,
+      payload: { content: string; actor_email?: string | null; metadata?: JsonObject },
+    ): Promise<IntakeChatTurnResponse> {
+      return request<IntakeChatTurnResponse>(
+        `/projects/${encodePathSegment(projectId)}/intake-chat/messages`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            content: payload.content,
+            actor_email: payload.actor_email ?? null,
+            metadata: payload.metadata ?? {},
+          }),
+        },
+      );
+    },
+
+    listIntakeChatMessages(
+      projectId: string,
+      options: { limit?: number; afterTurnIndex?: number } = {},
+    ): Promise<IntakeChatMessagesResponse> {
+      const params = new URLSearchParams();
+      if (options.limit !== undefined) {
+        params.set("limit", String(options.limit));
+      }
+      if (options.afterTurnIndex !== undefined) {
+        params.set("after_turn_index", String(options.afterTurnIndex));
+      }
+      const query = params.toString();
+      return request<IntakeChatMessagesResponse>(
+        `/projects/${encodePathSegment(projectId)}/intake-chat/messages${query ? `?${query}` : ""}`,
+      );
+    },
+
     getServiceHealth(): Promise<ServiceProbeStatus> {
       return request<ServiceProbeStatus>("/health");
     },

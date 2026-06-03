@@ -11,6 +11,8 @@ validation_commands:
 files_expected:
   - deck_builder/visual_qa_deterministic.py
   - system/visual_qa_repository.py
+  - system/visual_qa_deterministic_validator.py
   - tests/unit/test_visual_qa_deterministic.py
   - .pfos/baby_steps/158_deterministic_visual_qa.yaml
 source_plan: PFOS v2.0 clean integer sequence realignment
+status: implemented

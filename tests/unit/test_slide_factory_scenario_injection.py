@@ -67,3 +67,23 @@ def test_slide_factory_preserves_existing_refs_and_does_not_mutate_input() -> No
         "FM!CM_M18_DOWNSIDE",
     ]
     assert base_slide["content"]["financial_refs"] == ["FM!EXISTING"]
+
+
+def test_build_slide_combines_auto_refs_with_scenario_financial_refs() -> None:
+    injected = SlideFactory().build_slide(
+        slide(),
+        source_refs=["source_002"],
+        scenario="downside",
+        financial_cells=[
+            {
+                "cell_ref": "FM!CM_M18_DOWNSIDE",
+                "scenario": "downside",
+                "validation_status": "validated",
+            }
+        ],
+    )
+
+    assert injected["job"]["required_evidence"] == ["source_001", "source_002"]
+    assert injected["content"]["evidence_refs"] == ["source_001", "source_002"]
+    assert injected["content"]["financial_refs"] == ["FM!CM_M18_DOWNSIDE"]
+    assert injected["provenance"]["financial_scenario"]["scenario"] == "downside"

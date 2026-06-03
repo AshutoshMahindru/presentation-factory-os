@@ -27,6 +27,14 @@ def test_ui_api_client_exposes_operator_status_helpers() -> None:
     api_client = read_repo_file("ui/lib/api.ts")
 
     required_contracts = [
+        "createProject",
+        "appendIntakeChatMessage",
+        "listIntakeChatMessages",
+        "CreateProjectPayload",
+        "AudienceProfilePayload",
+        "IntakeChatTurnResponse",
+        "/projects",
+        "/projects/${encodePathSegment(projectId)}/intake-chat/messages",
         "getProjectControlPlaneHealth",
         "getProjectOutboxStatus",
         "getProjectSourceRetractionStatus",
@@ -50,8 +58,10 @@ def test_operator_smoke_path_ui_files_are_present() -> None:
         "ui/app/page.tsx",
         "ui/app/approvals/page.tsx",
         "ui/components/ApprovalLedger.tsx",
+        "ui/components/AudienceIntakeForm.tsx",
         "ui/components/ExportReadinessPanel.tsx",
         "ui/components/HardGateStatusPanel.tsx",
+        "ui/components/PersonaSelector.tsx",
         "ui/components/ProjectHealth.tsx",
         "ui/components/QueueStatusPanel.tsx",
     ]
@@ -85,6 +95,8 @@ def test_project_dashboard_page_wires_operator_status_panels() -> None:
 
     for label in [
         "Operator control plane",
+        "AudienceIntakeForm",
+        "PersonaSelector",
         "Load dashboard",
         "ProjectHealth",
         "getProjectControlPlaneHealth",
@@ -92,6 +104,33 @@ def test_project_dashboard_page_wires_operator_status_panels() -> None:
         "Enter a project ID to inspect queue, hard-gate, and approval status.",
     ]:
         assert label in dashboard_page
+
+
+def test_persona_dashboard_components_surface_intake_and_selection_contracts() -> None:
+    intake_form = read_repo_file("ui/components/AudienceIntakeForm.tsx")
+    persona_selector = read_repo_file("ui/components/PersonaSelector.tsx")
+
+    for label in [
+        "Audience intake",
+        "Create project profile",
+        "Known objections",
+        "Initial intake message",
+        "createProject",
+        "appendIntakeChatMessage",
+        "onProjectCreated",
+    ]:
+        assert label in intake_form
+
+    for label in [
+        "Persona selection",
+        "Audience lens",
+        "IC partner",
+        "CFO",
+        "Board sponsor",
+        "decision_bias",
+        "onPersonaSelected",
+    ]:
+        assert label in persona_selector
 
 
 def test_queue_and_hard_gate_panels_surface_operator_blockers() -> None:

@@ -9,8 +9,11 @@ validation_commands:
   - python3 scripts/validate_yaml.py
   - make validate
 files_expected:
+  - deck_builder/visual_regression.py
   - scripts/generate_reference_set.py
   - tests/visual_regression/test_perceptual_diff.py
+  - tests/unit/test_visual_regression.py
   - tests/unit/test_generate_reference_set.py
   - .pfos/baby_steps/163_visual_regression_testing.yaml
 source_plan: PFOS v2.0 clean integer sequence realignment
+status: implemented

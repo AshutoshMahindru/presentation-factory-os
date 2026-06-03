@@ -74,3 +74,14 @@ def test_additional_property_fails():
 
     assert result.valid is False
     assert any("<root>" in error or "Additional properties" in error for error in result.errors)
+
+
+def test_validate_many_reports_indexed_errors():
+    valid = valid_token()
+    invalid = valid_token(namespace="vibes")
+
+    result = DesignTokenValidator.from_file().validate_many((valid, invalid))
+
+    assert result.valid is False
+    assert result.errors
+    assert result.errors[0].startswith("[1] namespace:")

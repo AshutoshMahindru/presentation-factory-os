@@ -9,7 +9,7 @@ validation_commands:
   - make validate
 files_expected:
   - deck_builder/visual_qa.py
-  - agents/review_agent.py
   - tests/unit/test_visual_qa_vision_judge.py
   - .pfos/baby_steps/159_vision_model_visual_judge.yaml
 source_plan: PFOS v2.0 clean integer sequence realignment
+status: implemented

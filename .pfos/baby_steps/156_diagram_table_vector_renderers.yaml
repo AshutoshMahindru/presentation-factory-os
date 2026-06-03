@@ -15,3 +15,4 @@ files_expected:
   - tests/unit/test_tool_server_tables.py
   - .pfos/baby_steps/156_diagram_table_vector_renderers.yaml
 source_plan: PFOS v2.0 clean integer sequence realignment
+status: implemented

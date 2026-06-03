@@ -9,9 +9,11 @@ validation_commands:
   - make validate
 files_expected:
   - api/exports.py
+  - tool_server/export.py
   - deck_builder/render_pdf.py
   - deck_builder/render_web_deck.py
   - deck_builder/render_speaker_notes.py
   - tests/integration/test_multi_format_export.py
   - .pfos/baby_steps/162_multi_format_export_api.yaml
 source_plan: PFOS v2.0 clean integer sequence realignment
+status: implemented

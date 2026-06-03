@@ -15,3 +15,4 @@ files_expected:
   - tests/unit/test_slide_materiality.py
   - .pfos/baby_steps/143_pillar_to_slide_mapping.yaml
 source_plan: PFOS v2.0 clean integer sequence realignment
+status: implemented

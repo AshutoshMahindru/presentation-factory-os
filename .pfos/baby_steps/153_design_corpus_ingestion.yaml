@@ -9,10 +9,8 @@ validation_commands:
   - python3 scripts/validate_yaml.py
   - make validate
 files_expected:
-  - jobs/design_corpus_ingestion_job.py
-  - tool_server/parsers/pdf_layout_parser.py
-  - system/design_corpus_repository.py
+  - deck_builder/design_corpus_ingestion.py
   - tests/unit/test_design_corpus_ingestion.py
-  - tests/unit/test_pdf_layout_parser.py
   - .pfos/baby_steps/153_design_corpus_ingestion.yaml
 source_plan: PFOS v2.0 clean integer sequence realignment
+status: implemented

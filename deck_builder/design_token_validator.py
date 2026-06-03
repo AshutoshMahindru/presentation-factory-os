@@ -38,6 +38,13 @@ class DesignTokenValidator:
         messages = tuple(self._format_error(error) for error in errors)
         return DesignTokenValidationResult(valid=not messages, errors=messages)
 
+    def validate_many(self, payloads: list[dict[str, Any]] | tuple[dict[str, Any], ...]) -> DesignTokenValidationResult:
+        messages: list[str] = []
+        for index, payload in enumerate(payloads):
+            result = self.validate(payload)
+            messages.extend(f"[{index}] {error}" for error in result.errors)
+        return DesignTokenValidationResult(valid=not messages, errors=tuple(messages))
+
     def assert_valid(self, payload: dict[str, Any]) -> None:
         result = self.validate(payload)
         if not result.valid:

@@ -9,7 +9,8 @@ validation_commands:
   - python3 scripts/validate_yaml.py
   - make validate
 files_expected:
-  - tool_server/vector_renderer.py
+  - deck_builder/render_web_deck.py
   - tests/unit/test_headless_svg_render.py
   - .pfos/baby_steps/157_headless_browser_rasterizer.yaml
 source_plan: PFOS v2.0 clean integer sequence realignment
+status: implemented

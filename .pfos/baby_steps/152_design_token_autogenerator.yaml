@@ -8,8 +8,10 @@ validation_commands:
   - python3 scripts/validate_yaml.py
   - make validate
 files_expected:
-  - system/design_token_autogenerator.py
-  - agents/visual_agent.py
+  - deck_builder/design_token_autogenerator.py
+  - deck_builder/design_token_validator.py
   - tests/unit/test_design_token_autogenerator.py
+  - tests/unit/test_design_token_validator.py
   - .pfos/baby_steps/152_design_token_autogenerator.yaml
 source_plan: PFOS v2.0 clean integer sequence realignment
+status: implemented

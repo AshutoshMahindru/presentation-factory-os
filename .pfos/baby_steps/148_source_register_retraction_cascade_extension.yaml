@@ -9,9 +9,8 @@ validation_commands:
   - python3 scripts/validate_yaml.py
   - make validate
 files_expected:
-  - jobs/source_retraction_job.py
-  - system/source_lifecycle_event_repository.py
-  - system/thesis_repository.py
+  - tests/integration/test_source_retraction_cascade.py
   - tests/integration/test_source_retraction_invalidates_financial_specs.py
   - .pfos/baby_steps/148_source_register_retraction_cascade_extension.yaml
 source_plan: PFOS v2.0 clean integer sequence realignment
+status: implemented

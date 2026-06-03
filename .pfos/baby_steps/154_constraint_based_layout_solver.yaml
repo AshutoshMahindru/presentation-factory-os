@@ -15,3 +15,4 @@ files_expected:
   - tests/unit/test_layout_constraints.py
   - .pfos/baby_steps/154_constraint_based_layout_solver.yaml
 source_plan: PFOS v2.0 clean integer sequence realignment
+status: implemented

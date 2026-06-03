@@ -12,3 +12,4 @@ files_expected:
   - tests/unit/test_slide_factory_scenario_injection.py
   - .pfos/baby_steps/145_scenario_aware_slide_injection.yaml
 source_plan: PFOS v2.0 clean integer sequence realignment
+status: implemented

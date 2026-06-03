@@ -15,3 +15,4 @@ files_expected:
   - tests/unit/test_ui_operator_smoke_path.py
   - .pfos/baby_steps/149_ui_persona_selection_dashboard.yaml
 source_plan: PFOS v2.0 clean integer sequence realignment
+status: implemented

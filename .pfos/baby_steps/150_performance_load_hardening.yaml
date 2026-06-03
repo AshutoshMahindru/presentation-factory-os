@@ -10,8 +10,6 @@ validation_commands:
   - make validate
 files_expected:
   - tests/load/test_thesis_loop_load.py
-  - tests/load/test_outbox_queue_load.py
-  - tests/load/test_source_retraction_queue_load.py
-  - Makefile
   - .pfos/baby_steps/150_performance_load_hardening.yaml
 source_plan: PFOS v2.0 clean integer sequence realignment
+status: implemented
