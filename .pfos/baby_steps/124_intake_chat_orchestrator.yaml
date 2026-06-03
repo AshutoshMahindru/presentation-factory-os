@@ -1,0 +1,18 @@
+step_id: 124
+name: intake_chat_orchestrator
+branch: codex/v2-step-124-intake-chat-orchestrator
+objective: >
+  Use schema-driven intake orchestration to ask missing audience-profile questions,
+  parse answers, validate updates, and append deterministic confirmations.
+commit_message: "v2-step-124: Intake Chat Orchestrator"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - agents/intake_chat_orchestrator.py
+  - system/audience_profile_validator.py
+  - api/workflow.py
+  - tests/unit/test_intake_orchestrator.py
+  - tests/integration/test_chat_intake_flow.py
+  - .pfos/baby_steps/124_intake_chat_orchestrator.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

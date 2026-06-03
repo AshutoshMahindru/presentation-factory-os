@@ -1,0 +1,16 @@
+step_id: 163
+name: visual_regression_testing
+branch: codex/v2-step-163-visual-regression-testing
+objective: >
+  Generate deterministic reference slides and compare render output for layout
+  drift.
+commit_message: "v2-step-163: Visual Regression Testing"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - scripts/generate_reference_set.py
+  - tests/visual_regression/test_perceptual_diff.py
+  - tests/unit/test_generate_reference_set.py
+  - .pfos/baby_steps/163_visual_regression_testing.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

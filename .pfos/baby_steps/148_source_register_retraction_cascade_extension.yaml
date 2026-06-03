@@ -1,0 +1,17 @@
+step_id: 148
+name: source_register_retraction_cascade_extension
+branch: codex/v2-step-148-source-register-retraction-cascade-extension
+objective: >
+  Cascade source retractions into thesis/financial artifacts and block affected
+  projects.
+commit_message: "v2-step-148: Source Register Retraction Cascade Extension"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - jobs/source_retraction_job.py
+  - system/source_lifecycle_event_repository.py
+  - system/thesis_repository.py
+  - tests/integration/test_source_retraction_invalidates_financial_specs.py
+  - .pfos/baby_steps/148_source_register_retraction_cascade_extension.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

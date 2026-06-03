@@ -55,6 +55,24 @@ def test_known_objections_must_be_array():
     assert any("known_objections" in error for error in result.errors)
 
 
+def test_known_objections_may_be_empty():
+    result = AudienceProfileValidator.from_file().validate(
+        valid_profile(known_objections=[])
+    )
+
+    assert result.valid is True
+    assert result.errors == ()
+
+
+def test_stakeholder_map_must_have_at_least_one_member():
+    profile = valid_profile(stakeholder_map=[])
+
+    result = AudienceProfileValidator.from_file().validate(profile)
+
+    assert result.valid is False
+    assert any("stakeholder_map" in error for error in result.errors)
+
+
 def test_stakeholder_map_requires_role_and_concern():
     profile = valid_profile(stakeholder_map=[{"role": "economic_buyer"}])
 
@@ -72,3 +90,20 @@ def test_additional_property_fails():
 
     assert result.valid is False
     assert any("Additional properties" in error or "<root>" in error for error in result.errors)
+
+
+def test_invalid_stakeholder_influence_level_fails():
+    profile = valid_profile(
+        stakeholder_map=[
+            {
+                "role": "economic_buyer",
+                "concern": "roi",
+                "influence_level": "dominant",
+            }
+        ]
+    )
+
+    result = AudienceProfileValidator.from_file().validate(profile)
+
+    assert result.valid is False
+    assert any("influence_level" in error for error in result.errors)

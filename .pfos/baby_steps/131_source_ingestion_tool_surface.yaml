@@ -1,0 +1,16 @@
+step_id: 131
+name: source_ingestion_tool_surface
+branch: codex/v2-step-131-source-ingestion-tool-surface
+objective: >
+  Complete deterministic source parsing tools and parser provenance coverage.
+commit_message: "v2-step-131: Source Ingestion Tool Server Surface"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - tool_server/app.py
+  - tool_server/parsers
+  - tests/unit/test_tool_server_parsers.py
+  - tests/integration/test_source_ingestion_e2e.py
+  - .pfos/baby_steps/131_source_ingestion_tool_surface.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

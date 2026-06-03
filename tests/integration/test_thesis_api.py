@@ -82,6 +82,7 @@ class TestThesisApi:
     def test_create_thesis_version(self, monkeypatch):
         repository = FakeThesisRepository()
         monkeypatch.setattr(workflow, "create_thesis_repository", lambda: repository)
+        project_id = uuid4()
 
         payload = {
             "thesis_statement": "AI will transform healthcare by 2028.",
@@ -90,11 +91,19 @@ class TestThesisApi:
                 {"pillar_index": 1, "pillar_type": "claim", "statement": "Regulatory clarity emerging"},
             ]
         }
-        resp = client.post(f"/projects/{uuid4()}/thesis-versions", json=payload)
+        resp = client.post(f"/projects/{project_id}/thesis-versions", json=payload)
         assert resp.status_code == 200
         data = resp.json()
         assert "id" in data
         assert data["version_number"] == 1
+        version_id = UUID(data["id"])
+        assert repository.versions_by_project[project_id][0].thesis_statement == (
+            "AI will transform healthcare by 2028."
+        )
+        assert [pillar.statement for pillar in repository.pillars_by_version[version_id]] == [
+            "Market $500B",
+            "Regulatory clarity emerging",
+        ]
 
     def test_get_current_thesis(self, monkeypatch):
         repository = FakeThesisRepository()
@@ -113,6 +122,8 @@ class TestThesisApi:
         data = resp.json()
         assert data["thesis_statement"] == "Test."
         assert len(data["pillars"]) == 1
+        assert data["pillars"][0]["pillar_type"] == "narrative"
+        assert data["pillars"][0]["stress_status"] == "unstressed"
 
     def test_no_thesis_returns_none(self, monkeypatch):
         repository = FakeThesisRepository()

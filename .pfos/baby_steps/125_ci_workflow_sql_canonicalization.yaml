@@ -1,0 +1,17 @@
+step_id: 125
+name: ci_workflow_sql_canonicalization
+branch: codex/v2-step-125-ci-workflow-sql-canonicalization
+objective: >
+  Close CI parity and enforce canonical SQL drift checks using the clean v2 source-
+  of-truth sequence.
+commit_message: "v2-step-125: CI Workflow and SQL Canonicalization"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - .github/workflows/validate.yml
+  - Makefile
+  - scripts/check_sql_canonical.py
+  - tests/unit/test_check_sql_canonical.py
+  - .pfos/baby_steps/125_ci_workflow_sql_canonicalization.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

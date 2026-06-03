@@ -85,7 +85,7 @@ class ResearchLoopMixin:
         project_id: str,
         topic: str,
         max_loops: int | None = None,  # None = unbounded; operator can force stop
-        financial_agent: Any | None = None,  # optional FinancialAgent for step 111
+        financial_agent: Any | None = None,  # optional FinancialAgent for step 140
     ) -> dict[str, Any]:
         loop_number = 1
         previous_thesis = None
@@ -111,7 +111,7 @@ class ResearchLoopMixin:
                     "pillars_count": 0,
                 }
 
-            # Step 111: financial review of the generated thesis. The
+            # Step 140: financial review of the generated thesis. The
             # review can mark pillars as stressed (contradiction) and the
             # stressed count feeds into convergence so a thesis with
             # contradicting financial cells takes longer to converge.
@@ -126,7 +126,7 @@ class ResearchLoopMixin:
                     )
                 stressed_pillar_count = len(review.pillars_with_contradictions())
                 # Mark each contradicting pillar as stressed in the thesis
-                # repository so downstream gates (step 112) can see them.
+                # repository so downstream gates (step 141) can see them.
                 for pillar_id in review.pillars_with_contradictions():
                     self._mark_pillar_stressed(thesis_version_id, pillar_id)
 
@@ -143,7 +143,7 @@ class ResearchLoopMixin:
                 return {
                     "status": "converged",
                     "loops": loop_number,
-                    "thesis_version_id": str(current.id) if current else None,
+                    "thesis_version_id": last_real_thesis_id,
                     "convergence_delta": delta,
                     "stressed_pillar_count": stressed_pillar_count,
                 }
@@ -152,7 +152,7 @@ class ResearchLoopMixin:
                 return {
                     "status": "max_loops_reached",
                     "loops": loop_number,
-                    "thesis_version_id": str(current.id) if current else None,
+                    "thesis_version_id": last_real_thesis_id,
                     "convergence_delta": delta,
                     "stressed_pillar_count": stressed_pillar_count,
                 }
@@ -220,7 +220,7 @@ class ResearchLoopMixin:
             # The stress endpoint is added in a follow-up step; for now,
             # treat the mark as a no-op so the loop can run end-to-end
             # even before the endpoint lands.
-            pass
+            return None
 
 
 class DeepReadMixin:
@@ -290,7 +290,7 @@ class ResearchAgent(BaseAgent, ThesisInitiationMixin, ResearchLoopMixin, DeepRea
         self._validate_json_schema(data, SOURCE_PROPOSAL_SCHEMA)
 
         registered_ids: list[str] = []
-        for src in data["sources"]:
+        for src in data["sources"][:max_sources]:
             if not self._is_valid_uri(src["uri"]):
                 continue
 

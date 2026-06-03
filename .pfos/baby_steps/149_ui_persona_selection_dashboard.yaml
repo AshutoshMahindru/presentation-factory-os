@@ -1,0 +1,17 @@
+step_id: 149
+name: ui_persona_selection_dashboard
+branch: codex/v2-step-149-ui-persona-selection-dashboard
+objective: >
+  Expose persona selection and project health dashboard surfaces for operators.
+commit_message: "v2-step-149: UI Persona Selection + Dashboard"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - ui/components/AudienceIntakeForm.tsx
+  - ui/components/PersonaSelector.tsx
+  - ui/components/ProjectHealth.tsx
+  - ui/app/page.tsx
+  - tests/unit/test_ui_operator_smoke_path.py
+  - .pfos/baby_steps/149_ui_persona_selection_dashboard.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

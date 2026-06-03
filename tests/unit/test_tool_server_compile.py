@@ -38,8 +38,6 @@ def test_compile_financial_spec_returns_cells() -> None:
 
 
 def test_compile_financial_spec_validation_failure_returns_empty_cells() -> None:
-    """If the compiled cells fail validation, the endpoint returns an empty
-    cells list and the validation errors in warnings."""
     response = client.post(
         "/tools/compile_financial_spec",
         json={
@@ -47,15 +45,15 @@ def test_compile_financial_spec_validation_failure_returns_empty_cells() -> None
             "spec": {
                 "scenario": "base",
                 "formulas": [
-                    # formula name missing — compiler will raise
+                    {"name": "Revenue", "expression": "unknown_input + 1", "label": "Revenue"},
                 ],
             },
         },
     )
-    # FastAPI will surface the CompilationError as a 500 by default; we
-    # don't need to assert the exact status, just that the endpoint
-    # does not silently return invalid cells.
-    assert response.status_code in (200, 422, 500)
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail["error"] == "financial_spec_compilation_failed"
+    assert "unknown references" in detail["message"]
 
 
 def test_compile_financial_spec_default_scenario() -> None:

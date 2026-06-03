@@ -1,0 +1,15 @@
+step_id: 130
+name: source_register_schema_repository
+branch: codex/v2-step-130-source-register-schema-repository
+objective: >
+  Maintain source register repository coverage and canonical source memory schema.
+commit_message: "v2-step-130: Source Register Schema + Repository"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - system/source_register_repository.py
+  - infra/postgres/init/001_schema.sql
+  - tests/unit/test_source_register_repository.py
+  - .pfos/baby_steps/130_source_register_schema_repository.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

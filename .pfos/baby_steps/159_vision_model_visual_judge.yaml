@@ -1,0 +1,15 @@
+step_id: 159
+name: vision_model_visual_judge
+branch: codex/v2-step-159-vision-model-visual-judge
+objective: >
+  Integrate structured vision-judge scoring through mocked/local-safe contracts.
+commit_message: "v2-step-159: Vision Model Visual Judge"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - deck_builder/visual_qa.py
+  - agents/review_agent.py
+  - tests/unit/test_visual_qa_vision_judge.py
+  - .pfos/baby_steps/159_vision_model_visual_judge.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

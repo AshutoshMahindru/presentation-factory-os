@@ -1,0 +1,15 @@
+step_id: 134
+name: thesis_registry_schema
+branch: codex/v2-step-134-thesis-registry-schema
+objective: >
+  Maintain thesis versions, pillars, and research loop repository contracts.
+commit_message: "v2-step-134: Thesis Registry Schema"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - system/thesis_repository.py
+  - infra/postgres/init/001_schema.sql
+  - tests/unit/test_thesis_repository.py
+  - .pfos/baby_steps/134_thesis_registry_schema.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

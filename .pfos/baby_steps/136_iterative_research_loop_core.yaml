@@ -1,0 +1,18 @@
+step_id: 136
+name: iterative_research_loop_core
+branch: codex/v2-step-136-iterative-research-loop-core
+objective: >
+  Bound iterative research loops with convergence tracking and workflow loop
+  endpoints.
+commit_message: "v2-step-136: Iterative Research Loop Core"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - agents/research_agent.py
+  - api/workflow.py
+  - system/thesis_repository.py
+  - tests/unit/test_research_agent_loop.py
+  - tests/integration/test_research_loop_api.py
+  - .pfos/baby_steps/136_iterative_research_loop_core.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

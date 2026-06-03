@@ -1,0 +1,17 @@
+step_id: 127
+name: audience_subresource_api
+branch: codex/v2-step-127-audience-subresource-api
+objective: >
+  Expose audience member and batch subresources without weakening project creation
+  or phase guards.
+commit_message: "v2-step-127: Audience Subresource API"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - api/workflow.py
+  - api/project_repository.py
+  - tests/integration/test_audience_member_api.py
+  - tests/integration/test_audience_batch_api.py
+  - .pfos/baby_steps/127_audience_subresource_api.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

@@ -1,0 +1,17 @@
+step_id: 146
+name: export_metadata_auto_build
+branch: codex/v2-step-146-export-metadata-auto-build
+objective: >
+  Build export metadata with slide materiality, financial references, and source
+  appendix mapping.
+commit_message: "v2-step-146: Materiality & Export Metadata Auto-Build"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - deck_builder/slide_factory.py
+  - deck_builder/render_python_pptx.py
+  - tests/unit/test_slide_materiality.py
+  - tests/unit/test_render_python_pptx.py
+  - .pfos/baby_steps/146_export_metadata_auto_build.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

@@ -1,0 +1,16 @@
+step_id: 137
+name: thesis_aware_source_deep_read
+branch: codex/v2-step-137-thesis-aware-source-deep-read
+objective: >
+  Deep-read sources for thesis pillars and persist search coverage.
+commit_message: "v2-step-137: Thesis-Aware Source Deep-Read"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - system/source_register_repository.py
+  - evidence_graph/evidence_linker.py
+  - agents/research_agent.py
+  - tests/unit/test_source_register_coverage.py
+  - .pfos/baby_steps/137_thesis_aware_source_deep_read.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

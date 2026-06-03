@@ -1,0 +1,16 @@
+step_id: 151
+name: mathematical_design_language_system
+branch: codex/v2-step-151-mathematical-design-language-system
+objective: >
+  Generate deterministic design tokens from mathematical grid, type scale,
+  whitespace, and color harmony rules.
+commit_message: "v2-step-151: Mathematical Design Language System Engine"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - system/design_language_engine.py
+  - docs/21_DesignTokens.schema.json
+  - tests/unit/test_design_language_engine.py
+  - .pfos/baby_steps/151_mathematical_design_language_system.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

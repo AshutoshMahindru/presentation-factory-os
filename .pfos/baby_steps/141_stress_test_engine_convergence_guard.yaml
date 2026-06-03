@@ -1,0 +1,18 @@
+step_id: 141
+name: stress_test_engine_convergence_guard
+branch: codex/v2-step-141-stress-test-engine-convergence-guard
+objective: >
+  Stress financial scenarios and prevent convergence when thesis-linked financial
+  cells are invalid or stale.
+commit_message: "v2-step-141: Stress Test Engine + Convergence Guard"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - financial_model/stress_test_engine.py
+  - system/guards.py
+  - docs/08_StateMachine_Spec.yaml
+  - tests/unit/test_stress_test_engine.py
+  - tests/unit/test_thesis_convergence_guard.py
+  - .pfos/baby_steps/141_stress_test_engine_convergence_guard.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

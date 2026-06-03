@@ -1,0 +1,17 @@
+step_id: 140
+name: financial_agent_source_review
+branch: codex/v2-step-140-financial-agent-source-review
+objective: >
+  Review thesis-linked sources for quantitative contradictions and feed results into
+  research loops.
+commit_message: "v2-step-140: FinancialAgent Source Review"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - agents/financial_agent.py
+  - agents/research_agent.py
+  - tests/unit/test_financial_agent_review.py
+  - tests/unit/test_research_loop_with_financial.py
+  - .pfos/baby_steps/140_financial_agent_source_review.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

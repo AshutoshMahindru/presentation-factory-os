@@ -1,0 +1,17 @@
+step_id: 143
+name: pillar_to_slide_mapping
+branch: codex/v2-step-143-pillar-to-slide-mapping
+objective: >
+  Map thesis pillars into deterministic slide jobs and materiality-aware narrative
+  arcs.
+commit_message: "v2-step-143: Narrative Arc + Pillar-to-Job Mapping"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - deck_builder/slide_factory.py
+  - deck_builder/narrative_arc_validator.py
+  - tests/unit/test_slide_factory.py
+  - tests/unit/test_slide_materiality.py
+  - .pfos/baby_steps/143_pillar_to_slide_mapping.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

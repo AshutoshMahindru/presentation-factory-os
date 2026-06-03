@@ -1,0 +1,15 @@
+step_id: 157
+name: headless_browser_rasterizer
+branch: codex/v2-step-157-headless-browser-rasterizer
+objective: >
+  Add headless rendering for SVG/canvas artifacts with resource limits and
+  deterministic output contracts.
+commit_message: "v2-step-157: Headless Browser Rasterizer"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - tool_server/vector_renderer.py
+  - tests/unit/test_headless_svg_render.py
+  - .pfos/baby_steps/157_headless_browser_rasterizer.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

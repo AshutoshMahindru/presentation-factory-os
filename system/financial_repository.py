@@ -61,7 +61,7 @@ class FinancialRepository:
       - Stores numeric values, not formula text + spec_json.
       - Each cell can be linked to exactly one thesis_pillar (FK).
       - Each cell optionally records promoted_from_spec for lineage back
-        to the sandbox spec that produced it (step 141 sets this).
+        to the sandbox spec that produced it (step 142 sets this).
       - artifact_status reflects the cell's lifecycle in the canonical
         model; the validator also reads this column.
 
@@ -98,7 +98,7 @@ class FinancialRepository:
     ) -> FinancialCellRow:
         """Insert or update a cell keyed by (project_id, scenario, cell_ref).
 
-        Used by the promotion step (141) and by direct cell writes from
+        Used by the promotion step (142) and by direct cell writes from
         the validator pipeline. The upsert keeps the unique constraint
         satisfied when the same logical cell is re-promoted.
         """

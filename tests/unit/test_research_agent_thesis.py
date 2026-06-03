@@ -26,6 +26,24 @@ class TestResearchAgentThesis:
         assert result["thesis_version_id"] == "thesis-1"
         assert result["pillars_count"] == 2
         mock_workflow.create_thesis_version.assert_called_once()
+        args, kwargs = mock_workflow.create_thesis_version.call_args
+        assert args[0] == "proj-1"
+        assert args[1] == {
+            "project_id": "proj-1",
+            "thesis_statement": "AI regulation will unlock enterprise adoption by 2027.",
+            "pillars": [
+                {
+                    "pillar_index": 0,
+                    "pillar_type": "data",
+                    "statement": "Market size $500B by 2027",
+                },
+                {
+                    "pillar_index": 1,
+                    "pillar_type": "claim",
+                    "statement": "EU AI Act creates legal clarity",
+                },
+            ],
+        }
 
     def test_thesis_schema_enforcement(self):
         mock_llm = MagicMock()

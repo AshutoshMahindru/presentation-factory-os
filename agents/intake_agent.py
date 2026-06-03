@@ -29,6 +29,7 @@ AUDIENCE_PROFILE_SCHEMA: dict[str, Any] = {
         },
         "known_objections": {
             "type": "array",
+            "minItems": 0,
             "items": {
                 "type": "string",
                 "enum": [

@@ -1,0 +1,15 @@
+step_id: 160
+name: cognitive_load_slide_master
+branch: codex/v2-step-160-cognitive-load-slide-master
+objective: >
+  Enforce cognitive load, slide master, and semantic layout constraints.
+commit_message: "v2-step-160: Cognitive Load & Slide Master Engine"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - deck_builder/slide_master_engine.py
+  - deck_builder/cognitive_load_scorer.py
+  - tests/unit/test_slide_master_engine.py
+  - .pfos/baby_steps/160_cognitive_load_slide_master.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

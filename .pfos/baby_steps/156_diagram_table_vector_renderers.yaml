@@ -1,0 +1,17 @@
+step_id: 156
+name: diagram_table_vector_renderers
+branch: codex/v2-step-156-diagram-table-vector-renderers
+objective: >
+  Render diagrams and tables as deterministic vector or high-fidelity table
+  artifacts.
+commit_message: "v2-step-156: Diagram and Table Vector Renderers"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - tool_server/diagrams
+  - tool_server/tables
+  - tests/unit/test_tool_server_diagrams.py
+  - tests/unit/test_tool_server_tables.py
+  - .pfos/baby_steps/156_diagram_table_vector_renderers.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

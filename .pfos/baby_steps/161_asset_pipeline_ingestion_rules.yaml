@@ -1,0 +1,17 @@
+step_id: 161
+name: asset_pipeline_ingestion_rules
+branch: codex/v2-step-161-asset-pipeline-ingestion-rules
+objective: >
+  Validate asset provenance, raster quality, logo safe zones, and brand overlay
+  constraints.
+commit_message: "v2-step-161: Asset Pipeline + Ingestion Rules"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - tool_server/assets.py
+  - deck_builder/asset_validator.py
+  - docs/25_Asset_Pipeline_Spec.yaml
+  - tests/unit/test_asset_validator.py
+  - .pfos/baby_steps/161_asset_pipeline_ingestion_rules.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

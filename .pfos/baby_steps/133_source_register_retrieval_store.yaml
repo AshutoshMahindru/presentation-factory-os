@@ -1,0 +1,17 @@
+step_id: 133
+name: source_register_retrieval_store
+branch: codex/v2-step-133-source-register-retrieval-store
+objective: >
+  Route source discovery and source lifecycle queries through retrieval store
+  contracts.
+commit_message: "v2-step-133: Source Register as Retrieval Store"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - retrieval_engine/router.py
+  - retrieval_engine/structured_retriever.py
+  - tests/unit/test_retrieval_router.py
+  - tests/unit/test_structured_retriever.py
+  - .pfos/baby_steps/133_source_register_retrieval_store.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

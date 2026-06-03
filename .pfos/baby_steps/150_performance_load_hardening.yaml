@@ -1,0 +1,17 @@
+step_id: 150
+name: performance_load_hardening
+branch: codex/v2-step-150-performance-load-hardening
+objective: >
+  Add deterministic local load contracts and live-gated Docker load evidence for
+  thesis/outbox/source queues.
+commit_message: "v2-step-150: Performance & Load Hardening"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - tests/load/test_thesis_loop_load.py
+  - tests/load/test_outbox_queue_load.py
+  - tests/load/test_source_retraction_queue_load.py
+  - Makefile
+  - .pfos/baby_steps/150_performance_load_hardening.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

@@ -138,7 +138,7 @@ class FinancialReview:
 
 
 class FinancialAgent(BaseAgent):
-    """Bidirectional source <-> thesis review agent (step 111).
+    """Bidirectional source <-> thesis review agent (step 140).
 
     Two responsibilities:
       1. `review_sources_for_thesis`: orchestrate a per-pillar review
@@ -151,7 +151,7 @@ class FinancialAgent(BaseAgent):
          statement (e.g., "margins expanding" vs a margin cell whose
          value decreased year over year). Returns a structured
          QuantitativeContradiction so the loop can mark the pillar as
-         stressed (step 112) without re-running the LLM.
+         stressed (step 141) without re-running the LLM.
 
     The agent does not hold DB drivers - per the project's
     no-agent-db-imports rule, it talks to the workflow API and the LLM

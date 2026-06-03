@@ -1,0 +1,14 @@
+step_id: 145
+name: scenario_aware_slide_injection
+branch: codex/v2-step-145-scenario-aware-slide-injection
+objective: >
+  Inject validated scenario financial context into slide output.
+commit_message: "v2-step-145: Scenario-Aware Slide Injection"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - deck_builder/slide_factory.py
+  - tests/unit/test_slide_factory_scenario_injection.py
+  - .pfos/baby_steps/145_scenario_aware_slide_injection.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

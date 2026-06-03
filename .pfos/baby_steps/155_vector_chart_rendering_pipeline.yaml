@@ -1,0 +1,17 @@
+step_id: 155
+name: vector_chart_rendering_pipeline
+branch: codex/v2-step-155-vector-chart-rendering-pipeline
+objective: >
+  Render charts through vector-capable SVG pipelines with deterministic quality
+  checks.
+commit_message: "v2-step-155: Vector Chart Rendering Pipeline"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - tool_server/charts/chart_vega_lite.py
+  - tool_server/charts/chart_echarts_svg.py
+  - tool_server/vector_renderer.py
+  - tests/unit/test_tool_server_charts.py
+  - .pfos/baby_steps/155_vector_chart_rendering_pipeline.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

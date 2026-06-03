@@ -1,0 +1,17 @@
+step_id: 138
+name: sandbox_financial_spec_schema
+branch: codex/v2-step-138-sandbox-financial-spec-schema
+objective: >
+  Maintain financial spec sandbox lifecycle, thesis linkage, and scenario status
+  isolation.
+commit_message: "v2-step-138: Sandbox Financial Spec Schema"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - system/financial_spec_repository.py
+  - infra/postgres/init/001_schema.sql
+  - tests/unit/test_financial_spec_repository.py
+  - tests/unit/test_financial_spec_sandbox.py
+  - .pfos/baby_steps/138_sandbox_financial_spec_schema.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

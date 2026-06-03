@@ -1,0 +1,16 @@
+step_id: 132
+name: research_agent_source_discovery
+branch: codex/v2-step-132-research-agent-source-discovery
+objective: >
+  Ensure ResearchAgent discovery registers sources through workflow-safe APIs.
+commit_message: "v2-step-132: Research Agent Source Discovery Loop"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - agents/research_agent.py
+  - api/workflow.py
+  - api/sources.py
+  - tests/unit/test_research_agent.py
+  - .pfos/baby_steps/132_research_agent_source_discovery.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

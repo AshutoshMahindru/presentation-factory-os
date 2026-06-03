@@ -468,7 +468,7 @@ def test_mark_promoted_records_promoted_to_payload() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Step 141 promotion bridge
+# Step 142 promotion bridge
 # ---------------------------------------------------------------------------
 
 

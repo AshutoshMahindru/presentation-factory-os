@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
-from agents.intake_agent import ChatTurn, IntakeAgent, IntakeUpdateProposal
+from agents.intake_agent import (
+    AUDIENCE_PROFILE_SCHEMA,
+    ChatTurn,
+    IntakeAgent,
+    IntakeUpdateProposal,
+)
 
 
 VALID_RESPONSE = {
@@ -121,6 +127,14 @@ def test_intake_agent_reports_schema_violations_as_gaps() -> None:
     assert proposal.confidence == 0.0
     assert any("audience_profile" in gap for gap in proposal.gaps)
     assert "valid intake update" in proposal.recommended_next_action
+
+
+def test_intake_agent_audience_schema_tracks_canonical_schema() -> None:
+    canonical = json.loads(Path("docs/22_AudienceProfile.schema.json").read_text())
+
+    assert AUDIENCE_PROFILE_SCHEMA["additionalProperties"] is False
+    assert AUDIENCE_PROFILE_SCHEMA["required"] == canonical["required"]
+    assert AUDIENCE_PROFILE_SCHEMA["properties"] == canonical["properties"]
 
 
 def test_intake_update_payload_includes_ready_flag() -> None:

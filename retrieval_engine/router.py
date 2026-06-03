@@ -148,6 +148,8 @@ def route_to_source_register(query_text: str, payload: dict) -> dict:
             project_id=payload.get("project_id"),
             query=payload.get("query"),
             status="active",
+            limit=payload.get("limit", 20),
+            sources=payload.get("sources"),
         )
     elif classification == "source_lifecycle":
         return search_source_register(
@@ -155,6 +157,7 @@ def route_to_source_register(query_text: str, payload: dict) -> dict:
             query=payload.get("query"),
             status=None,  # all statuses
             include_retracted=True,
+            limit=payload.get("limit", 20),
+            sources=payload.get("sources"),
         )
     return {"error": "Unroutable source query", "classification": classification}
-

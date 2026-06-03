@@ -1,0 +1,16 @@
+step_id: 135
+name: thesis_initiation_agent
+branch: codex/v2-step-135-thesis-initiation-agent
+objective: >
+  Generate initial thesis versions and expose thesis APIs.
+commit_message: "v2-step-135: Thesis Initiation Agent"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - agents/research_agent.py
+  - api/workflow.py
+  - tests/unit/test_research_agent_thesis.py
+  - tests/integration/test_thesis_api.py
+  - .pfos/baby_steps/135_thesis_initiation_agent.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

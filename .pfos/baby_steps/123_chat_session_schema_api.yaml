@@ -1,0 +1,19 @@
+step_id: 123
+name: chat_session_schema_api
+branch: codex/v2-step-123-chat-session-schema-api
+objective: >
+  Add append-only project chat messages and intake state API surface. Preserve
+  existing implemented intake-chat endpoints and document them under clean v2 Step
+  123.
+commit_message: "v2-step-123: Chat Session Schema + API Surface"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - system/chat_repository.py
+  - api/workflow.py
+  - tests/unit/test_chat_repository.py
+  - tests/integration/test_chat_api.py
+  - tests/integration/test_chat_intake_flow.py
+  - .pfos/baby_steps/123_chat_session_schema_api.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

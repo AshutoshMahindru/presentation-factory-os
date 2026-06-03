@@ -171,7 +171,7 @@ def test_loop_includes_stressed_pillar_count_in_result() -> None:
 
 
 def test_evaluate_convergence_bumps_delta_for_stressed_pillars() -> None:
-    """Step 111: the convergence delta grows with stressed pillar count,
+    """Step 141: the convergence delta grows with stressed pillar count,
     keeping the loop running so the operator can address the contradiction."""
     agent = ResearchAgent(workflow_client=_FakeWorkflow(), llm_client=_FakeLLM())  # type: ignore[arg-type]
     # No stress: delta is 0.03 (below EPSILON).

@@ -71,6 +71,8 @@ class TestResearchLoopApi:
         data = resp.json()
         assert data["loop_number"] == 1
         assert data["status"] == "running"
+        loop = repository.loops[UUID(data["id"])]
+        assert loop.sources_discovered_count == 0
 
     def test_finalize_loop(self, monkeypatch):
         repository = FakeThesisRepository()
@@ -90,3 +92,6 @@ class TestResearchLoopApi:
         data = resp.json()
         assert data["status"] == "converged"
         assert data["convergence_delta"] == 0.03
+        finalized = repository.loops[UUID(loop_id)]
+        assert finalized.sources_discovered_count == 12
+        assert finalized.completed_at == "2026-01-01T00:01:00Z"

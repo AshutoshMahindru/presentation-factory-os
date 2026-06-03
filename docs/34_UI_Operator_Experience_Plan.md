@@ -28,11 +28,13 @@ new error semantics.
 
 ## Deferred Surfaces
 
-`GET /health/projects/{project_id}` remains planned in the API documentation and
-is not called by the Step 78 client. Dashboard work should continue using
-`getProjectControlPlaneHealth` until the aggregate project health endpoint has
-an implemented score, evidence coverage, open retraction, days-in-phase,
-approval velocity, and blocking-gate contract.
+`GET /health/projects/{project_id}` is now implemented by the workflow service
+and documented in `docs/30_Health_Endpoint_Surface.md`. The Step 78 client keeps
+using `getProjectControlPlaneHealth` as the stable UI fan-out helper for
+outbox, source-retraction, and hard-gate panels; future UI work may add an
+aggregate helper once screens need the health score, evidence coverage, open
+retraction, days-in-phase, approval velocity, and blocking-gate summary fields
+directly.
 
 No export-readiness API helper is added in this step. `api/exports.py` is still
 an empty placeholder, and the UI client should not introduce a synthetic export

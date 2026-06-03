@@ -1,8 +1,9 @@
 # API Control-Plane Contracts
 
 This document summarizes the PFOS v3.2.4 workflow-service API/control-plane
-surface that is implemented and covered by integration tests after Baby Steps
-66-71 and 112-114. It documents actual behavior only; planned endpoints remain
+surface that is implemented and covered by integration tests. PFOS v2 clean
+integer step alignment is tracked in `docs/43_PFOS_v2_Clean_Integer_Step_Map.md`.
+This document describes actual API behavior only; planned endpoints remain
 marked as planned.
 
 ## Service Health

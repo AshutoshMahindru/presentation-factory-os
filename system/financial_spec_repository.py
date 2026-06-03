@@ -66,16 +66,16 @@ def _validate_status(status: str, allowed: frozenset[str], kind: str) -> None:
 class FinancialSpecRepository:
     """Sandbox CRUD for financial_model_specs and financial_scenarios.
 
-    Step 108: the sandbox is where the FinancialAgent (step 111) drafts,
+    Step 138: the sandbox is where the FinancialAgent (step 140) drafts,
     compiles, and validates financial specs. Promotion to canonical
-    (step 141) writes to a different table via a separate handler — this
+    (step 142) writes to a different table via a separate handler — this
     repository is sandbox-only.
 
     Database invariants enforced here (in addition to the schema's CHECK
     constraints and partial unique index):
       - Only one active (draft/compiled/validated) spec per pillar.
       - Status transitions are explicit (the caller picks the next state).
-      - promoted_to is None until status='promoted' (set by step 141).
+      - promoted_to is None until status='promoted' (set by step 142).
     """
 
     def __init__(self, pool: ConnectionPool) -> None:

@@ -1,0 +1,17 @@
+step_id: 128
+name: intake_agent_persona_generation
+branch: codex/v2-step-128-intake-agent-persona-generation
+objective: >
+  Add deterministic persona proposal generation through HTTP-safe agent boundaries
+  and local validation tests.
+commit_message: "v2-step-128: IntakeAgent Persona Generation"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - agents/intake_agent.py
+  - agents/base_agent.py
+  - tests/unit/test_intake_agent.py
+  - tests/unit/test_no_agent_db_imports.py
+  - .pfos/baby_steps/128_intake_agent_persona_generation.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

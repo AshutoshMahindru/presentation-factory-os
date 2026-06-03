@@ -1,0 +1,15 @@
+step_id: 164
+name: design_override_panel_audit
+branch: codex/v2-step-164-design-override-panel-audit
+objective: >
+  Allow audited design overrides that trigger validation and re-approval gates.
+commit_message: "v2-step-164: Design Override Panel with Audit Trail"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - ui/components/DesignOverridePanel.tsx
+  - system/design_override_repository.py
+  - tests/unit/test_design_override_audit.py
+  - .pfos/baby_steps/164_design_override_panel_audit.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

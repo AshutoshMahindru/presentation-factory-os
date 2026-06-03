@@ -1,0 +1,16 @@
+step_id: 129
+name: persona_selection_guard
+branch: codex/v2-step-129-persona-selection-guard
+objective: >
+  Require selected persona for enriched audience profiles before downstream
+  transitions.
+commit_message: "v2-step-129: Persona Selection Guard"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - system/guards.py
+  - docs/08_StateMachine_Spec.yaml
+  - tests/unit/test_guards.py
+  - .pfos/baby_steps/129_persona_selection_guard.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

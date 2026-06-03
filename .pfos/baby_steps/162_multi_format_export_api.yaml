@@ -1,0 +1,17 @@
+step_id: 162
+name: multi_format_export_api
+branch: codex/v2-step-162-multi-format-export-api
+objective: >
+  Generate PPTX, PDF, web deck, and speaker notes from one source of truth.
+commit_message: "v2-step-162: Multi-Format Export API"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - api/exports.py
+  - deck_builder/render_pdf.py
+  - deck_builder/render_web_deck.py
+  - deck_builder/render_speaker_notes.py
+  - tests/integration/test_multi_format_export.py
+  - .pfos/baby_steps/162_multi_format_export_api.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

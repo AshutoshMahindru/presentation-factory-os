@@ -1,0 +1,16 @@
+step_id: 158
+name: deterministic_visual_qa
+branch: codex/v2-step-158-deterministic-visual-qa
+objective: >
+  Score rendered slides with deterministic visual metrics and persist results for
+  export gates.
+commit_message: "v2-step-158: Deterministic Visual QA"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - deck_builder/visual_qa_deterministic.py
+  - system/visual_qa_repository.py
+  - tests/unit/test_visual_qa_deterministic.py
+  - .pfos/baby_steps/158_deterministic_visual_qa.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

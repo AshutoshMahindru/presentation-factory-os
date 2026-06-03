@@ -1,0 +1,14 @@
+step_id: 147
+name: end_to_end_thesis_to_export
+branch: codex/v2-step-147-end-to-end-thesis-to-export
+objective: >
+  Cover thesis to financial model to slide/export gate integration with
+  deterministic local contracts.
+commit_message: "v2-step-147: End-to-End Thesis-to-Deck Integration Test"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - tests/integration/test_end_to_end_thesis_to_export.py
+  - .pfos/baby_steps/147_end_to_end_thesis_to_export.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

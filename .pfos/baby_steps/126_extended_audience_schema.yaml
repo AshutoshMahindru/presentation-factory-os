@@ -1,0 +1,16 @@
+step_id: 126
+name: extended_audience_schema
+branch: codex/v2-step-126-extended-audience-schema
+objective: >
+  Extend audience profile contracts for members, batches, persona proposals, and
+  deterministic validation.
+commit_message: "v2-step-126: Extended Audience Schema"
+validation_commands:
+  - python3 scripts/validate_yaml.py
+  - make validate
+files_expected:
+  - docs/22_AudienceProfile.schema.json
+  - system/audience_profile_validator.py
+  - tests/unit/test_audience_profile_validator.py
+  - .pfos/baby_steps/126_extended_audience_schema.yaml
+source_plan: PFOS v2.0 clean integer sequence realignment

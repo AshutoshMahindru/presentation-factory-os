@@ -1,3 +1,4 @@
+import json
 from unittest.mock import MagicMock
 from uuid import uuid4
 import pytest
@@ -50,6 +51,44 @@ class TestResearchAgent:
 
         assert len(ids) == 1
         mock_workflow.create_source.assert_called_once()
+
+    def test_discovery_honors_max_sources_and_truncates_normalized_text(self):
+        mock_llm = MagicMock()
+        long_summary = "x" * 6000
+        mock_llm.complete.return_value = json.dumps(
+            {
+                "sources": [
+                    {
+                        "uri": "https://example.com/a",
+                        "title": "A",
+                        "source_type": "web",
+                        "summary": long_summary,
+                    },
+                    {
+                        "uri": "https://example.com/b",
+                        "title": "B",
+                        "source_type": "web",
+                        "summary": "b",
+                    },
+                    {
+                        "uri": "https://example.com/c",
+                        "title": "C",
+                        "source_type": "web",
+                        "summary": "c",
+                    },
+                ]
+            }
+        )
+        mock_workflow = MagicMock()
+        mock_workflow.create_source.side_effect = [{"id": "src-a"}, {"id": "src-b"}]
+
+        agent = ResearchAgent(workflow_client=mock_workflow, llm_client=mock_llm)
+        ids = agent.discover_and_register_sources("proj-789", "AI", max_sources=2)
+
+        assert ids == ["src-a", "src-b"]
+        assert mock_workflow.create_source.call_count == 2
+        first_payload = mock_workflow.create_source.call_args_list[0].args[1]
+        assert first_payload["normalized_text"] == "x" * 5000
 
     def test_no_direct_db_imports(self):
         import agents.research_agent as mod

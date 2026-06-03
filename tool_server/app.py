@@ -110,7 +110,7 @@ async def compile_financial_spec(
 
     # The compile result is then run through the existing validator so the
     # caller gets a guarantee that the cells are export-ready (modulo
-    # the actual storage write, which lives in step 141).
+    # the actual storage write, which lives in clean v2 step 142).
     cells_as_dicts = [c.to_validator_dict() for c in result.cells]
     validation = FinancialModelValidator().validate_cells(cells_as_dicts)
     if not validation.valid:

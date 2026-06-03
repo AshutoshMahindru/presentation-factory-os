@@ -26,6 +26,7 @@ class TestResearchAgentLoop:
 
         assert result["status"] == "converged"
         assert result["loops"] == 1
+        assert result["thesis_version_id"] == "thesis-1"
         assert result["convergence_delta"] == 0.02
 
     def test_loop_respects_max_loops(self):
@@ -44,6 +45,7 @@ class TestResearchAgentLoop:
 
         assert result["status"] == "max_loops_reached"
         assert result["loops"] == 3
+        assert result["thesis_version_id"] == "thesis-1"
 
     def test_evaluate_convergence_first_loop(self):
         agent = ResearchAgent()

@@ -5,7 +5,7 @@ objective: >
   Add the canonical financial_cells table alongside the sandbox
   financial_model_specs (step 108). The canonical table holds evaluated
   numeric values with full lineage: thesis_pillar_id (FK to thesis_pillars),
-  promoted_from_spec (FK to financial_model_specs, set by step 141's
+  promoted_from_spec (FK to financial_model_specs, set by clean v2 step 142's
   promotion), parser_provenance, artifact_status. Document the schema
   for both project_id+scenario+cell_ref uniqueness and the artifact_status
   lifecycle. Provide FinancialRepository for upsert, get, list-by-project,
