@@ -15,3 +15,4 @@ files_expected:
   - tests/unit/test_financial_spec_sandbox.py
   - .pfos/baby_steps/138_sandbox_financial_spec_schema.yaml
 source_plan: PFOS v2.0 clean integer sequence realignment
+status: implemented

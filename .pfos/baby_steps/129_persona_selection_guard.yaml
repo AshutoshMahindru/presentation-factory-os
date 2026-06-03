@@ -14,3 +14,4 @@ files_expected:
   - tests/unit/test_guards.py
   - .pfos/baby_steps/129_persona_selection_guard.yaml
 source_plan: PFOS v2.0 clean integer sequence realignment
+status: implemented

@@ -13,3 +13,4 @@ files_expected:
   - tests/unit/test_source_register_repository.py
   - .pfos/baby_steps/130_source_register_schema_repository.yaml
 source_plan: PFOS v2.0 clean integer sequence realignment
+status: implemented

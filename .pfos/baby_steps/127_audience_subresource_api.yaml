@@ -15,3 +15,4 @@ files_expected:
   - tests/integration/test_audience_batch_api.py
   - .pfos/baby_steps/127_audience_subresource_api.yaml
 source_plan: PFOS v2.0 clean integer sequence realignment
+status: implemented

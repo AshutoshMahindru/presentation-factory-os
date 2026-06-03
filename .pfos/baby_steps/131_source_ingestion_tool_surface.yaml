@@ -14,3 +14,4 @@ files_expected:
   - tests/integration/test_source_ingestion_e2e.py
   - .pfos/baby_steps/131_source_ingestion_tool_surface.yaml
 source_plan: PFOS v2.0 clean integer sequence realignment
+status: implemented

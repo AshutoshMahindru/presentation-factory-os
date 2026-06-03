@@ -14,3 +14,4 @@ files_expected:
   - tests/unit/test_source_register_coverage.py
   - .pfos/baby_steps/137_thesis_aware_source_deep_read.yaml
 source_plan: PFOS v2.0 clean integer sequence realignment
+status: implemented

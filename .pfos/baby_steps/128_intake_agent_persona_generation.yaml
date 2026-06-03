@@ -15,3 +15,4 @@ files_expected:
   - tests/unit/test_no_agent_db_imports.py
   - .pfos/baby_steps/128_intake_agent_persona_generation.yaml
 source_plan: PFOS v2.0 clean integer sequence realignment
+status: implemented
