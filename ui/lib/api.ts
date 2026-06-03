@@ -196,6 +196,35 @@ export interface ProjectControlPlaneHealth {
   hardGates: HardGateStatus;
 }
 
+export interface ChatPresentationRequest {
+  content: string;
+  project_context?: JsonObject;
+}
+
+export interface ChatPresentationResponse {
+  run_id: string;
+  brief: JsonObject;
+  pillars: JsonObject[];
+  slides: JsonObject[];
+  deck: JsonObject;
+  export_gate: {
+    export_allowed: boolean;
+    blocking_reasons: string[];
+    warnings: string[];
+  };
+  web_preview: {
+    artifact_type: string;
+    mime_type: string;
+    html: string;
+    content_hash: string;
+    slide_count: number;
+    warnings: string[];
+  };
+  export_metadata: JsonObject;
+  evidence_gaps: string[];
+  recommended_next_action: string;
+}
+
 export interface ApiErrorPayload {
   detail?: unknown;
 }
@@ -229,6 +258,10 @@ export interface PfosApiClient {
   getProjectHardGateStatus(projectId: string): Promise<HardGateStatus>;
   getProjectControlPlaneHealth(projectId: string): Promise<ProjectControlPlaneHealth>;
   getApprovalStatus(projectId: string, phase: PfosPhase | string): Promise<ApprovalStatus>;
+  createPresentationFromChat(
+    payload: ChatPresentationRequest,
+    projectId?: string,
+  ): Promise<ChatPresentationResponse>;
   requestPhaseTransition(
     projectId: string,
     payload: PhaseTransitionRequest,
@@ -407,6 +440,22 @@ export function createPfosApiClient(options: ApiClientOptions = {}): PfosApiClie
       return request<ApprovalStatus>(
         `/projects/${encodePathSegment(projectId)}/approvals/status/${encodePathSegment(phase)}`,
       );
+    },
+
+    createPresentationFromChat(
+      payload: ChatPresentationRequest,
+      projectId?: string,
+    ): Promise<ChatPresentationResponse> {
+      const path = projectId
+        ? `/projects/${encodePathSegment(projectId)}/presentations/from-chat`
+        : "/presentations/from-chat";
+      return request<ChatPresentationResponse>(path, {
+        method: "POST",
+        body: JSON.stringify({
+          content: payload.content,
+          project_context: payload.project_context ?? {},
+        }),
+      });
     },
 
     requestPhaseTransition(

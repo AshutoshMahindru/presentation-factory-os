@@ -12,6 +12,7 @@ from agents.intake_agent import IntakeAgent
 from agents.intake_chat_orchestrator import IntakeChatOrchestrator
 from api.sources import router as sources_router
 from api.project_repository import ProjectRepository
+from deck_builder.chat_presentation import create_presentation_from_chat
 from system.audience_profile_validator import AudienceProfileValidator
 from system.approval_quorum import ApprovalEntry, ApprovalQuorum
 from system.chat_repository import ChatMessage, ChatRepository
@@ -255,6 +256,24 @@ class IntakeChatTurnResponse(BaseModel):
     assistant_message: IntakeChatMessageResponse | None = None
     source_turn_count: int
     proposal: dict[str, Any]
+
+
+class ChatPresentationRequest(BaseModel):
+    content: str = Field(min_length=1)
+    project_context: dict[str, Any] = Field(default_factory=dict)
+
+
+class ChatPresentationResponse(BaseModel):
+    run_id: str
+    brief: dict[str, Any]
+    pillars: list[dict[str, Any]]
+    slides: list[dict[str, Any]]
+    deck: dict[str, Any]
+    export_gate: dict[str, Any]
+    web_preview: dict[str, Any]
+    export_metadata: dict[str, Any]
+    evidence_gaps: list[str]
+    recommended_next_action: str
 
 
 class SourceCreateRequest(BaseModel):
@@ -769,6 +788,55 @@ def append_intake_chat_message(
         source_turn_count=int(result_payload["source_turn_count"]),
         proposal=dict(result_payload["proposal"]),
     )
+
+
+@app.post(
+    "/presentations/from-chat",
+    response_model=ChatPresentationResponse,
+)
+def create_standalone_presentation_from_chat(
+    payload: ChatPresentationRequest,
+) -> ChatPresentationResponse:
+    try:
+        run = create_presentation_from_chat(
+            payload.content,
+            payload.project_context,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "invalid_chat_presentation_request", "message": str(exc)},
+        ) from exc
+
+    return ChatPresentationResponse(**run.to_payload())
+
+
+@app.post(
+    "/projects/{project_id}/presentations/from-chat",
+    response_model=ChatPresentationResponse,
+)
+def create_project_presentation_from_chat(
+    project_id: str,
+    payload: ChatPresentationRequest,
+) -> ChatPresentationResponse:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail={"error": "project_not_found"})
+
+    context = dict(payload.project_context)
+    context.setdefault("project_id", project_id)
+    context.setdefault("audience", getattr(project, "audience", None))
+    context.setdefault("decision_required", getattr(project, "decision_required", None))
+
+    try:
+        run = create_presentation_from_chat(payload.content, context)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "invalid_chat_presentation_request", "message": str(exc)},
+        ) from exc
+
+    return ChatPresentationResponse(**run.to_payload())
 
 
 @app.get("/health/projects/{project_id}", response_model=ProjectHealthResponse)

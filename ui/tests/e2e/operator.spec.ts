@@ -55,6 +55,36 @@ const approvalStatus = {
   escalation_reason: null
 };
 
+const chatPresentationRun = {
+  run_id: "presentation_run_ui",
+  brief: {
+    topic: "PFOS automation reliability",
+    audience: "board",
+    objective: "Approve the reliability roadmap."
+  },
+  pillars: [],
+  slides: [],
+  deck: {},
+  export_gate: {
+    export_allowed: true,
+    blocking_reasons: [],
+    warnings: []
+  },
+  web_preview: {
+    artifact_type: "web_deck_preview",
+    mime_type: "text/html",
+    html: "<!doctype html><html><body><section>PFOS</section></body></html>",
+    content_hash: "9be24b7e831a055fa062001c213da30ec443ad2ccccedbdc8dbee9c209f9d522",
+    slide_count: 5,
+    warnings: []
+  },
+  export_metadata: {
+    formats: ["pptx", "pdf", "web", "speaker_notes"]
+  },
+  evidence_gaps: [],
+  recommended_next_action: "Review the preview and export the deck."
+};
+
 async function mockDashboardApi(page: import("@playwright/test").Page) {
   await page.route("**/health/projects/*/outbox", async (route) => {
     await route.fulfill({ json: outboxStatus });
@@ -68,6 +98,12 @@ async function mockDashboardApi(page: import("@playwright/test").Page) {
   await page.route("**/projects/*/approvals/status/*", async (route) => {
     await route.fulfill({ json: approvalStatus });
   });
+  await page.route("**/presentations/from-chat", async (route) => {
+    await route.fulfill({ json: chatPresentationRun });
+  });
+  await page.route("**/projects/*/presentations/from-chat", async (route) => {
+    await route.fulfill({ json: chatPresentationRun });
+  });
 }
 
 test("dashboard renders operator control plane without backend", async ({ page }) => {
@@ -76,6 +112,7 @@ test("dashboard renders operator control plane without backend", async ({ page }
   await expect(page.getByRole("heading", { name: "Operator control plane" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Create project profile" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Audience lens" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create a deck preview" })).toBeVisible();
 });
 
 test("dashboard load flow uses mocked project health and approval APIs", async ({ page }) => {
@@ -91,6 +128,22 @@ test("dashboard load flow uses mocked project health and approval APIs", async (
   await expect(page.getByRole("heading", { name: "Hard-gate status" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Approval status" })).toBeVisible();
   await expect(page.getByText("Met", { exact: true })).toBeVisible();
+});
+
+test("dashboard creates a mocked chat presentation preview", async ({ page }) => {
+  await mockDashboardApi(page);
+  await page.goto("/");
+
+  await page.getByLabel("Project ID").fill(projectId);
+  await page.getByLabel("Prompt").fill("Create a board deck for PFOS automation reliability.");
+  await page.getByRole("button", { name: "Create preview" }).click();
+
+  await expect(page.getByText("Slides")).toBeVisible();
+  await expect(page.getByText("5", { exact: true })).toBeVisible();
+  await expect(page.getByText("Export", { exact: true })).toBeVisible();
+  await expect(page.getByText("Ready", { exact: true })).toBeVisible();
+  await expect(page.getByText("9be24b7e831a")).toBeVisible();
+  await expect(page.getByText("Review the preview and export the deck.")).toBeVisible();
 });
 
 test("approvals page renders and loads mocked quorum status", async ({ page }) => {

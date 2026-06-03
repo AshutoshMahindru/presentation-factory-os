@@ -9,6 +9,7 @@ import { ProjectHealth } from "../components/ProjectHealth";
 import { ApiClientError, createPfosApiClient } from "../lib/api";
 import type {
   ApprovalStatus,
+  ChatPresentationResponse,
   CreateProjectResponse,
   PfosPhase,
   ProjectControlPlaneHealth,
@@ -39,8 +40,14 @@ export default function ProjectDashboardPage() {
   const [health, setHealth] = useState<ProjectControlPlaneHealth | null>(null);
   const [approvalStatus, setApprovalStatus] = useState<ApprovalStatus | null>(null);
   const [createdProject, setCreatedProject] = useState<CreateProjectResponse | null>(null);
+  const [presentationPrompt, setPresentationPrompt] = useState(
+    "Create a 5 slide board deck for PFOS automation reliability.",
+  );
+  const [presentationRun, setPresentationRun] = useState<ChatPresentationResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isCreatingPresentation, setIsCreatingPresentation] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [presentationErrorMessage, setPresentationErrorMessage] = useState<string | null>(null);
 
   const apiClient = useMemo(
     () =>
@@ -86,6 +93,42 @@ export default function ProjectDashboardPage() {
   function handleProjectCreated(project: CreateProjectResponse) {
     setCreatedProject(project);
     setProjectId(project.project_id);
+  }
+
+  async function createPresentationPreview() {
+    const content = presentationPrompt.trim();
+    if (!content) {
+      setPresentationRun(null);
+      setPresentationErrorMessage("Enter a presentation prompt.");
+      return;
+    }
+
+    setIsCreatingPresentation(true);
+    setPresentationErrorMessage(null);
+
+    try {
+      const normalizedProjectId = projectId.trim();
+      const run = await apiClient.createPresentationFromChat(
+        {
+          content,
+          project_context: {
+            decision_required: "Review and approve the proposed presentation direction.",
+          },
+        },
+        normalizedProjectId || undefined,
+      );
+      setPresentationRun(run);
+    } catch (error) {
+      setPresentationRun(null);
+      setPresentationErrorMessage(messageFromError(error));
+    } finally {
+      setIsCreatingPresentation(false);
+    }
+  }
+
+  function handlePresentationSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void createPresentationPreview();
   }
 
   return (
@@ -139,6 +182,66 @@ export default function ProjectDashboardPage() {
             {isLoading ? "Loading" : "Load dashboard"}
           </button>
         </form>
+
+        <section className="pfos-presentation-chat" aria-labelledby="presentation-chat-heading">
+          <div>
+            <p className="pfos-kicker">Presentation chat</p>
+            <h2 id="presentation-chat-heading">Create a deck preview</h2>
+          </div>
+
+          <form className="pfos-presentation-chat-form" onSubmit={handlePresentationSubmit}>
+            <label>
+              <span>Prompt</span>
+              <textarea
+                value={presentationPrompt}
+                onChange={(event) => setPresentationPrompt(event.target.value)}
+                rows={3}
+              />
+            </label>
+            <button type="submit" disabled={isCreatingPresentation}>
+              {isCreatingPresentation ? "Creating" : "Create preview"}
+            </button>
+          </form>
+
+          {presentationErrorMessage ? (
+            <p className="pfos-presentation-error" role="alert">
+              {presentationErrorMessage}
+            </p>
+          ) : null}
+
+          {presentationRun ? (
+            <div className="pfos-presentation-result" aria-live="polite">
+              <div>
+                <span>Slides</span>
+                <strong>{presentationRun.web_preview.slide_count}</strong>
+              </div>
+              <div>
+                <span>Export</span>
+                <strong>
+                  {presentationRun.export_gate.export_allowed ? "Ready" : "Blocked"}
+                </strong>
+              </div>
+              <div>
+                <span>Preview hash</span>
+                <code>{presentationRun.web_preview.content_hash.slice(0, 12)}</code>
+              </div>
+              <div className="pfos-presentation-result-wide">
+                <span>Next action</span>
+                <p>{presentationRun.recommended_next_action}</p>
+              </div>
+              {presentationRun.evidence_gaps.length > 0 ? (
+                <div className="pfos-presentation-result-wide">
+                  <span>Evidence gaps</span>
+                  <ul>
+                    {presentationRun.evidence_gaps.map((gap) => (
+                      <li key={gap}>{gap}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
 
         {health ? (
           <ProjectHealth
@@ -376,6 +479,112 @@ export default function ProjectDashboardPage() {
           opacity: 0.62;
         }
 
+        .pfos-presentation-chat {
+          background: #ffffff;
+          border: 1px solid #dce2ea;
+          border-radius: 8px;
+          margin-bottom: 20px;
+          padding: 16px;
+        }
+
+        .pfos-presentation-chat h2 {
+          font-size: 22px;
+          margin: 0 0 14px;
+        }
+
+        .pfos-presentation-chat-form {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 12px;
+          align-items: end;
+        }
+
+        .pfos-presentation-chat-form label {
+          display: grid;
+          gap: 6px;
+          min-width: 0;
+        }
+
+        .pfos-presentation-chat-form span,
+        .pfos-presentation-result span {
+          color: #536176;
+          font-size: 12px;
+          font-weight: 700;
+        }
+
+        .pfos-presentation-chat-form textarea {
+          border: 1px solid #c8d1dd;
+          border-radius: 6px;
+          color: #18202f;
+          font: inherit;
+          line-height: 1.35;
+          min-height: 92px;
+          padding: 10px 12px;
+          resize: vertical;
+        }
+
+        .pfos-presentation-chat-form button {
+          min-height: 40px;
+          border: 0;
+          border-radius: 6px;
+          background: #147d64;
+          color: #ffffff;
+          cursor: pointer;
+          font: inherit;
+          font-weight: 700;
+          padding: 0 16px;
+        }
+
+        .pfos-presentation-chat-form button:disabled {
+          cursor: default;
+          opacity: 0.62;
+        }
+
+        .pfos-presentation-error {
+          color: #9b1c1c;
+          margin: 12px 0 0;
+        }
+
+        .pfos-presentation-result {
+          border-top: 1px solid #e5eaf0;
+          display: grid;
+          gap: 14px;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          margin-top: 16px;
+          padding-top: 16px;
+        }
+
+        .pfos-presentation-result div {
+          display: grid;
+          gap: 6px;
+          min-width: 0;
+        }
+
+        .pfos-presentation-result strong,
+        .pfos-presentation-result code {
+          color: #18202f;
+          font-size: 18px;
+          font-weight: 800;
+        }
+
+        .pfos-presentation-result code {
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+          overflow-wrap: anywhere;
+        }
+
+        .pfos-presentation-result-wide {
+          grid-column: 1 / -1;
+        }
+
+        .pfos-presentation-result p,
+        .pfos-presentation-result ul {
+          margin: 0;
+        }
+
+        .pfos-presentation-result ul {
+          padding-left: 18px;
+        }
+
         .pfos-dashboard-empty {
           background: #ffffff;
           border: 1px dashed #cbd5e1;
@@ -400,6 +609,11 @@ export default function ProjectDashboardPage() {
           }
 
           .pfos-dashboard-query {
+            grid-template-columns: 1fr;
+          }
+
+          .pfos-presentation-chat-form,
+          .pfos-presentation-result {
             grid-template-columns: 1fr;
           }
 
