@@ -25,3 +25,5 @@ files_expected:
   - agents/research_agent.py
   - infra/neo4j/constraints.cypher
   - .pfos/baby_steps/107_thesis_aware_source_deep_read.yaml
+status: implemented
+canonical_clean_v2_step: 137

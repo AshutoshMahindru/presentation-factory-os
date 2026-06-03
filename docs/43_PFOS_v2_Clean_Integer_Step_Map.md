@@ -15,8 +15,10 @@ the operator.
 | 125-163 | 126-164 | Shifted forward by one integer |
 
 Older `.pfos/baby_steps` files below Step 123 are retained as historical
-implementation metadata. Clean v2 execution starts at Step 123 and ends at
-Step 164.
+inventory metadata. Steps 101-106 and 115-122 are metadata-only retired mapping
+files; steps 107-114 are historical implementation metadata with explicit
+`canonical_clean_v2_step` pointers. Clean v2 execution starts at Step 123 and
+ends at Step 164.
 
 ## Wave Ownership
 
@@ -35,6 +37,9 @@ Step 164.
 
 ## Already Implemented Or Partially Implemented
 
+- Historical steps 101-122: retained only for inventory continuity. They are
+  either marked `implemented` with a clean v2 mapping (107-114) or
+  `retired_renumbered` with a clean v2/repo-era pointer (101-106, 115-122).
 - Step 123 chat schema/API: implemented through `system/chat_repository.py`,
   workflow intake-chat endpoints, and chat integration tests.
 - Step 124 intake orchestrator: implemented through

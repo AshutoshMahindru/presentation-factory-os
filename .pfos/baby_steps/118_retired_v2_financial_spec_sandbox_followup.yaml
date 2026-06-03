@@ -1,0 +1,9 @@
+step_id: 118
+name: retired_v2_financial_spec_sandbox_followup
+status: retired_renumbered
+canonical_clean_v2_step: 138
+retired_reason: >
+  Historical repository-era hardening label. Financial spec sandbox coverage is
+  tracked in the clean integer sequence under step 138.
+metadata_only: true
+source_plan: PFOS v2.0 historical inventory cleanup

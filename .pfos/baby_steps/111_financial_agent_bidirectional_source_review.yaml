@@ -27,3 +27,5 @@ files_expected:
   - tests/unit/test_financial_agent_review.py
   - tests/unit/test_research_loop_with_financial.py
   - .pfos/baby_steps/111_financial_agent_bidirectional_source_review.yaml
+status: implemented
+canonical_clean_v2_step: 140

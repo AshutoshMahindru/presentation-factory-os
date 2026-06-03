@@ -18,3 +18,5 @@ files_expected:
   - tests/integration/test_chat_api.py
   - tests/integration/test_chat_intake_flow.py
   - .pfos/baby_steps/114_chat_api_and_intake_flow.yaml
+status: implemented
+canonical_clean_v2_step: 123

@@ -1,0 +1,9 @@
+step_id: 121
+name: retired_v2_financial_stress_test_engine
+status: retired_renumbered
+canonical_clean_v2_step: 141
+retired_reason: >
+  Historical repository-era hardening label. Stress-test engine and convergence
+  guard work is tracked in the clean integer sequence under step 141.
+metadata_only: true
+source_plan: PFOS v2.0 historical inventory cleanup

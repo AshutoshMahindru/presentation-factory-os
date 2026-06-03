@@ -1,0 +1,9 @@
+step_id: 102
+name: retired_v2_source_ingestion_surface
+status: retired_renumbered
+canonical_clean_v2_step: 131
+retired_reason: >
+  Historical PFOS v2 planning label. Source ingestion tool surface work is
+  tracked in the clean integer sequence under step 131.
+metadata_only: true
+source_plan: PFOS v2.0 historical inventory cleanup

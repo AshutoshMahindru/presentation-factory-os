@@ -1,0 +1,9 @@
+step_id: 106
+name: retired_v2_iterative_research_loop
+status: retired_renumbered
+canonical_clean_v2_step: 136
+retired_reason: >
+  Historical PFOS v2 planning label. Iterative research-loop work is tracked in
+  the clean integer sequence under step 136.
+metadata_only: true
+source_plan: PFOS v2.0 historical inventory cleanup

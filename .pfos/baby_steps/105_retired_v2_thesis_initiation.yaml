@@ -1,0 +1,9 @@
+step_id: 105
+name: retired_v2_thesis_initiation
+status: retired_renumbered
+canonical_clean_v2_step: 135
+retired_reason: >
+  Historical PFOS v2 planning label. Thesis initiation work is tracked in the
+  clean integer sequence under step 135.
+metadata_only: true
+source_plan: PFOS v2.0 historical inventory cleanup

@@ -1,0 +1,9 @@
+step_id: 122
+name: retired_v2_slide_factory_scenario_injection
+status: retired_renumbered
+canonical_clean_v2_step: 145
+retired_reason: >
+  Historical repository-era hardening label. Scenario-aware slide injection is
+  tracked in the clean integer sequence under step 145.
+metadata_only: true
+source_plan: PFOS v2.0 historical inventory cleanup

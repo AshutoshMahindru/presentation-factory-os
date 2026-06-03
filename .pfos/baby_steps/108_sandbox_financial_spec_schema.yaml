@@ -23,3 +23,5 @@ files_expected:
   - system/financial_spec_repository.py
   - tests/unit/test_financial_spec_repository.py
   - .pfos/baby_steps/108_sandbox_financial_spec_schema.yaml
+status: implemented
+canonical_clean_v2_step: 138

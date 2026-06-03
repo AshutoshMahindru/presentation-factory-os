@@ -23,3 +23,5 @@ files_expected:
   - tests/unit/test_tool_server_compile.py
   - pyproject.toml
   - .pfos/baby_steps/109_deterministic_formula_compiler.yaml
+status: implemented
+canonical_clean_v2_step: 139

@@ -1,0 +1,9 @@
+step_id: 116
+name: retired_v2_thesis_evolution_loop_hardening
+status: retired_renumbered
+canonical_clean_v2_step: 136
+retired_reason: >
+  Historical repository-era hardening label. Thesis loop hardening is tracked
+  by the clean integer sequence under step 136 and related tests.
+metadata_only: true
+source_plan: PFOS v2.0 historical inventory cleanup

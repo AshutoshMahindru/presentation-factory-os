@@ -22,3 +22,5 @@ files_expected:
   - system/financial_repository.py
   - tests/unit/test_financial_repository.py
   - .pfos/baby_steps/110_thesis_linked_financial_repository.yaml
+status: implemented
+canonical_clean_v2_step: 142

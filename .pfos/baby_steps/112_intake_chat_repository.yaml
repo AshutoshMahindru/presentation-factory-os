@@ -17,3 +17,5 @@ files_expected:
   - docs/04_Database_Schemas.sql
   - infra/postgres/init/001_schema.sql
   - .pfos/baby_steps/112_intake_chat_repository.yaml
+status: implemented
+canonical_clean_v2_step: 123

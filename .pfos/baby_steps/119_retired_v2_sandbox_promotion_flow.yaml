@@ -1,0 +1,9 @@
+step_id: 119
+name: retired_v2_sandbox_promotion_flow
+status: retired_renumbered
+canonical_clean_v2_step: 142
+retired_reason: >
+  Historical repository-era hardening label. Sandbox promotion to canonical
+  financial cells is tracked in the clean integer sequence under step 142.
+metadata_only: true
+source_plan: PFOS v2.0 historical inventory cleanup

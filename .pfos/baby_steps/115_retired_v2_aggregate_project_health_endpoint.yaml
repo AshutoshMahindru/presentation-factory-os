@@ -1,0 +1,10 @@
+step_id: 115
+name: retired_v2_aggregate_project_health_endpoint
+status: retired_renumbered
+canonical_repo_step: 066
+retired_reason: >
+  Historical repository-era hardening label. Project health endpoint work was
+  completed before the clean v2 123-164 sequence and is retained through code,
+  tests, and docs rather than re-entered as active v2 work.
+metadata_only: true
+source_plan: PFOS v2.0 historical inventory cleanup

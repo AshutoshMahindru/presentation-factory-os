@@ -1,0 +1,9 @@
+step_id: 117
+name: retired_v2_thesis_loop_load_thresholds
+status: retired_renumbered
+canonical_clean_v2_step: 150
+retired_reason: >
+  Historical repository-era hardening label. Load threshold coverage is tracked
+  in the clean integer sequence under step 150.
+metadata_only: true
+source_plan: PFOS v2.0 historical inventory cleanup

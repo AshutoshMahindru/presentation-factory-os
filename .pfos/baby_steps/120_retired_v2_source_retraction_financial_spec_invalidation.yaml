@@ -1,0 +1,10 @@
+step_id: 120
+name: retired_v2_source_retraction_financial_spec_invalidation
+status: retired_renumbered
+canonical_clean_v2_step: 148
+retired_reason: >
+  Historical repository-era hardening label. Source retraction cascade and
+  financial invalidation work is tracked in the clean integer sequence under
+  step 148.
+metadata_only: true
+source_plan: PFOS v2.0 historical inventory cleanup

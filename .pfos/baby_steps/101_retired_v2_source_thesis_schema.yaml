@@ -1,0 +1,11 @@
+step_id: 101
+name: retired_v2_source_thesis_schema
+status: retired_renumbered
+canonical_clean_v2_steps:
+  - 130
+  - 134
+retired_reason: >
+  Historical PFOS v2 planning label. Source-register and thesis-registry schema
+  work is tracked in the clean integer sequence under steps 130 and 134.
+metadata_only: true
+source_plan: PFOS v2.0 historical inventory cleanup

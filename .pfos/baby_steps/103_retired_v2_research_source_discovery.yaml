@@ -1,0 +1,9 @@
+step_id: 103
+name: retired_v2_research_source_discovery
+status: retired_renumbered
+canonical_clean_v2_step: 132
+retired_reason: >
+  Historical PFOS v2 planning label. Research-agent source discovery work is
+  tracked in the clean integer sequence under step 132.
+metadata_only: true
+source_plan: PFOS v2.0 historical inventory cleanup
