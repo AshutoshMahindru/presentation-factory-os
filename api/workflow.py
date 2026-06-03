@@ -194,6 +194,37 @@ class HardGateStatusResponse(BaseModel):
     failed_checks: list[dict[str, Any]]
 
 
+class EvidenceCoverageResponse(BaseModel):
+    ratio: float
+    covered_count: int | None = None
+    total_count: int | None = None
+    source: str
+
+
+class ApprovalVelocityResponse(BaseModel):
+    approvals_per_day: float
+    approval_count: int
+    days_in_phase: int
+    source: str
+
+
+class ProjectHealthResponse(BaseModel):
+    project_id: str
+    current_phase: str
+    status: str
+    blocked: bool
+    health_score: float
+    evidence_coverage_ratio: float
+    evidence_coverage: EvidenceCoverageResponse
+    open_retractions: int
+    days_in_current_phase: int
+    approval_velocity: ApprovalVelocityResponse
+    blocking_gates_status: str
+    outbox: OutboxStatusResponse
+    source_retractions: SourceRetractionStatusResponse
+    hard_gates: HardGateStatusResponse
+
+
 class IntakeChatMessageRequest(BaseModel):
     content: str = Field(min_length=1)
     actor_email: str | None = None
@@ -233,9 +264,15 @@ class SourceCreateRequest(BaseModel):
     normalized_text: str
 
 
+class ThesisPillarCreateRequest(BaseModel):
+    pillar_index: int
+    pillar_type: str = Field(min_length=1)
+    statement: str = Field(min_length=1)
+
+
 class ThesisVersionCreateRequest(BaseModel):
-    thesis_statement: str
-    pillars: list[dict[str, Any]]
+    thesis_statement: str = Field(min_length=1)
+    pillars: list[ThesisPillarCreateRequest]
 
 
 class ResearchLoopStartRequest(BaseModel):
@@ -267,6 +304,256 @@ def approval_escalation_status(approvals: list[dict[str, Any]], blocking_rejecti
         return "attention_required", "review_rejection"
 
     return "none", None
+
+
+def _payload_mapping(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return dict(value)
+    if isinstance(value, BaseModel):
+        return value.dict()
+    if is_dataclass(value):
+        return asdict(value)
+    return {
+        name: getattr(value, name)
+        for name in dir(value)
+        if not name.startswith("_") and not callable(getattr(value, name))
+    }
+
+
+def _call_optional_repository_method(
+    repository: Any,
+    names: tuple[str, ...],
+    arg_sets: tuple[tuple[Any, ...], ...],
+) -> Any | None:
+    for name in names:
+        method = getattr(repository, name, None)
+        if not callable(method):
+            continue
+        for args in arg_sets:
+            try:
+                return method(*args)
+            except TypeError:
+                continue
+    return None
+
+
+def _coerce_float(value: Any, default: float) -> float:
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _coerce_int(value: Any, default: int = 0) -> int:
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _bounded_ratio(value: Any, default: float = 1.0) -> float:
+    return max(0.0, min(1.0, _coerce_float(value, default)))
+
+
+def _project_current_phase(project: Any) -> str:
+    return str(getattr(project, "current_phase", "unknown"))
+
+
+def _project_days_in_current_phase(project: Any, project_id: str) -> int:
+    repository_value = _call_optional_repository_method(
+        project_repository,
+        (
+            "get_project_days_in_current_phase",
+            "get_days_in_current_phase",
+            "get_project_current_phase_age_days",
+        ),
+        ((project_id,),),
+    )
+    if repository_value is not None:
+        if isinstance(repository_value, (int, float, str)):
+            return max(0, _coerce_int(repository_value))
+        payload = _payload_mapping(repository_value)
+        return max(
+            0,
+            _coerce_int(
+                payload.get("days_in_current_phase", payload.get("days", 0))
+            ),
+        )
+
+    return max(0, _coerce_int(getattr(project, "days_in_current_phase", 0)))
+
+
+def _project_evidence_coverage(project_id: str, phase: str) -> EvidenceCoverageResponse:
+    repository_value = _call_optional_repository_method(
+        project_repository,
+        (
+            "get_project_evidence_coverage",
+            "get_project_evidence_coverage_status",
+            "get_project_evidence_coverage_ratio",
+            "get_evidence_coverage_ratio",
+        ),
+        ((project_id, phase), (project_id,)),
+    )
+    if repository_value is not None:
+        if isinstance(repository_value, (int, float, str)):
+            return EvidenceCoverageResponse(
+                ratio=_bounded_ratio(repository_value),
+                source="project_repository",
+            )
+        payload = _payload_mapping(repository_value)
+        return EvidenceCoverageResponse(
+            ratio=_bounded_ratio(
+                payload.get(
+                    "ratio",
+                    payload.get(
+                        "evidence_coverage_ratio",
+                        payload.get("coverage_ratio", 1.0),
+                    ),
+                )
+            ),
+            covered_count=(
+                _coerce_int(payload.get("covered_count"))
+                if payload.get("covered_count") is not None
+                else None
+            ),
+            total_count=(
+                _coerce_int(payload.get("total_count"))
+                if payload.get("total_count") is not None
+                else None
+            ),
+            source=str(payload.get("source", "project_repository")),
+        )
+
+    rubric_scores_method = getattr(project_repository, "list_rubric_scores", None)
+    if callable(rubric_scores_method):
+        try:
+            scores = rubric_scores_method(project_id, phase)
+        except Exception:
+            scores = []
+        for score in scores:
+            score_payload = _payload_mapping(score)
+            if str(score_payload.get("dimension", "")) == "evidence_coverage":
+                return EvidenceCoverageResponse(
+                    ratio=_bounded_ratio(score_payload.get("score")),
+                    source="rubric_scores",
+                )
+
+    return EvidenceCoverageResponse(
+        ratio=1.0,
+        source="deterministic_fallback",
+    )
+
+
+def _project_approval_velocity(
+    project_id: str,
+    phase: str,
+    days_in_phase: int,
+) -> ApprovalVelocityResponse:
+    repository_value = _call_optional_repository_method(
+        project_repository,
+        (
+            "get_project_approval_velocity",
+            "get_approval_velocity",
+            "get_project_approval_velocity_per_day",
+        ),
+        ((project_id, phase), (project_id,)),
+    )
+    if repository_value is not None:
+        if isinstance(repository_value, (int, float, str)):
+            return ApprovalVelocityResponse(
+                approvals_per_day=max(0.0, _coerce_float(repository_value, 0.0)),
+                approval_count=0,
+                days_in_phase=days_in_phase,
+                source="project_repository",
+            )
+        payload = _payload_mapping(repository_value)
+        approval_count = _coerce_int(payload.get("approval_count"), 0)
+        return ApprovalVelocityResponse(
+            approvals_per_day=max(
+                0.0,
+                _coerce_float(
+                    payload.get(
+                        "approvals_per_day",
+                        payload.get("approval_velocity_per_day", 0.0),
+                    ),
+                    0.0,
+                ),
+            ),
+            approval_count=approval_count,
+            days_in_phase=max(
+                0,
+                _coerce_int(payload.get("days_in_phase"), days_in_phase),
+            ),
+            source=str(payload.get("source", "project_repository")),
+        )
+
+    approvals_method = getattr(project_repository, "list_approvals_for_phase", None)
+    if callable(approvals_method):
+        approvals = approvals_method(project_id, phase)
+        approval_count = len(approvals)
+        denominator = max(days_in_phase, 1)
+        return ApprovalVelocityResponse(
+            approvals_per_day=round(approval_count / denominator, 3),
+            approval_count=approval_count,
+            days_in_phase=days_in_phase,
+            source="approval_ledger",
+        )
+
+    return ApprovalVelocityResponse(
+        approvals_per_day=0.0,
+        approval_count=0,
+        days_in_phase=days_in_phase,
+        source="deterministic_fallback",
+    )
+
+
+def _project_health_score(
+    project_id: str,
+    evidence_coverage: EvidenceCoverageResponse,
+    open_retractions: int,
+    approval_velocity: ApprovalVelocityResponse,
+    outbox_status: OutboxStatusResponse,
+    hard_gate_status: HardGateStatusResponse,
+) -> float:
+    repository_value = _call_optional_repository_method(
+        project_repository,
+        ("get_project_health_score", "get_health_score"),
+        ((project_id,),),
+    )
+    if repository_value is not None:
+        if isinstance(repository_value, (int, float, str)):
+            return round(_bounded_ratio(repository_value), 3)
+        payload = _payload_mapping(repository_value)
+        return round(
+            _bounded_ratio(payload.get("health_score", payload.get("score", 1.0))),
+            3,
+        )
+
+    retraction_component = 0.0 if open_retractions > 0 else 1.0
+    blocking_component = (
+        1.0
+        if hard_gate_status.passed and not outbox_status.blocked
+        else 0.0
+    )
+    approval_velocity_component = (
+        min(approval_velocity.approvals_per_day, 1.0)
+        if approval_velocity.approval_count > 0
+        else 1.0
+    )
+
+    return round(
+        (
+            0.4 * evidence_coverage.ratio
+            + 0.3 * retraction_component
+            + 0.2 * blocking_component
+            + 0.1 * approval_velocity_component
+        ),
+        3,
+    )
 
 
 @app.get("/health")
@@ -481,6 +768,88 @@ def append_intake_chat_message(
         ),
         source_turn_count=int(result_payload["source_turn_count"]),
         proposal=dict(result_payload["proposal"]),
+    )
+
+
+@app.get("/health/projects/{project_id}", response_model=ProjectHealthResponse)
+def get_project_health(project_id: str) -> ProjectHealthResponse:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail={"error": "project_not_found"})
+
+    current_phase = _project_current_phase(project)
+    days_in_phase = _project_days_in_current_phase(project, project_id)
+    evidence_coverage = _project_evidence_coverage(project_id, current_phase)
+    approval_velocity = _project_approval_velocity(
+        project_id=project_id,
+        phase=current_phase,
+        days_in_phase=days_in_phase,
+    )
+
+    outbox_status = outbox_repository.get_project_outbox_status(project_id)
+    source_retraction_status = (
+        source_lifecycle_repository.get_project_retraction_cascade_status(project_id)
+    )
+    hard_gate_result = hard_gate_repository.evaluate_no_blocking_rules(project_id)
+    hard_gate_payload = hard_gate_result.as_payload()
+
+    outbox_response = OutboxStatusResponse(
+        project_id=project_id,
+        blocked=outbox_status.blocked,
+        unprocessed_count=outbox_status.unprocessed_count,
+        failed_count=outbox_status.failed_count,
+        oldest_unprocessed_age_seconds=outbox_status.oldest_unprocessed_age_seconds,
+    )
+    source_retraction_response = SourceRetractionStatusResponse(
+        project_id=project_id,
+        blocked=source_retraction_status.blocked,
+        pending_count=source_retraction_status.pending_count,
+        processing_count=source_retraction_status.processing_count,
+        failed_count=source_retraction_status.failed_count,
+        oldest_open_age_seconds=source_retraction_status.oldest_open_age_seconds,
+    )
+    hard_gate_response = HardGateStatusResponse(
+        project_id=project_id,
+        name=str(hard_gate_payload["name"]),
+        passed=bool(hard_gate_payload["passed"]),
+        checks=list(hard_gate_payload["checks"]),
+        failed_checks=list(hard_gate_payload["failed_checks"]),
+    )
+
+    open_retractions = (
+        source_retraction_response.pending_count
+        + source_retraction_response.processing_count
+        + source_retraction_response.failed_count
+    )
+    blocked = (
+        outbox_response.blocked
+        or source_retraction_response.blocked
+        or not hard_gate_response.passed
+    )
+    blocking_gates_status = "blocked" if not hard_gate_response.passed else "clear"
+
+    return ProjectHealthResponse(
+        project_id=project_id,
+        current_phase=current_phase,
+        status="blocked" if blocked else "ready",
+        blocked=blocked,
+        health_score=_project_health_score(
+            project_id=project_id,
+            evidence_coverage=evidence_coverage,
+            open_retractions=open_retractions,
+            approval_velocity=approval_velocity,
+            outbox_status=outbox_response,
+            hard_gate_status=hard_gate_response,
+        ),
+        evidence_coverage_ratio=evidence_coverage.ratio,
+        evidence_coverage=evidence_coverage,
+        open_retractions=open_retractions,
+        days_in_current_phase=days_in_phase,
+        approval_velocity=approval_velocity,
+        blocking_gates_status=blocking_gates_status,
+        outbox=outbox_response,
+        source_retractions=source_retraction_response,
+        hard_gates=hard_gate_response,
     )
 
 
@@ -793,17 +1162,22 @@ def create_project_thesis_version(
     payload: ThesisVersionCreateRequest,
 ) -> dict[str, Any]:
     repository = create_thesis_repository()
+    parsed_project_id = UUID(project_id)
+    latest_version = repository.get_latest_thesis(parsed_project_id)
+    version_number = (
+        latest_version.version_number + 1 if latest_version is not None else 1
+    )
     version = repository.create_thesis_version(
-        UUID(project_id),
-        1,
+        parsed_project_id,
+        version_number,
         payload.thesis_statement,
     )
     for pillar in payload.pillars:
         repository.create_pillar(
             version.id,
-            int(pillar["pillar_index"]),
-            str(pillar["pillar_type"]),
-            str(pillar["statement"]),
+            pillar.pillar_index,
+            pillar.pillar_type,
+            pillar.statement,
         )
 
     return {"id": str(version.id), "version_number": version.version_number}

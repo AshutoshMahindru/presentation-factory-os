@@ -1,0 +1,21 @@
+step_id: 115
+name: aggregate_project_health_endpoint
+branch: codex/step-115-aggregate-project-health-endpoint
+objective: >
+  Implement the read-only aggregate project health endpoint documented in the
+  PFOS v3.2.4 control-plane plan. Compose existing outbox, source-retraction,
+  and hard-gate status surfaces under GET /health/projects/{project_id}, and
+  expose deterministic fallback values for evidence coverage, days in phase,
+  approval velocity, open retractions, and health score when richer repository
+  methods are not available locally.
+commit_message: "step-115: Add aggregate project health endpoint"
+validation_commands:
+  - python3 -m compileall api
+  - python3 -m pytest tests/integration/test_project_health_endpoint.py -vv
+  - python3 scripts/validate_yaml.py
+files_expected:
+  - api/workflow.py
+  - tests/integration/test_project_health_endpoint.py
+  - docs/30_Health_Endpoint_Surface.md
+  - docs/31_API_Control_Plane_Contracts.md
+  - .pfos/baby_steps/115_aggregate_project_health_endpoint.yaml

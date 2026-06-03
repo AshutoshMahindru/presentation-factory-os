@@ -1,0 +1,19 @@
+step_id: 122
+name: slide_factory_scenario_injection
+branch: codex/step-122-slide-factory-scenario-injection
+objective: >
+  Add metadata for injecting validated financial scenario context into slide
+  factory output. Existing evidence includes the slide financial_refs contract
+  in docs/09_Financial_Model_Schema.yaml, numeric assertion checks, and the
+  scaffolded slide-factory scenario-injection test.
+commit_message: "step-122: Add slide factory scenario injection metadata"
+validation_commands:
+  - python3 -m compileall deck_builder financial_model
+  - python3 -m pytest tests/unit/test_numeric_assertions_require_financial_refs.py tests/unit/test_slide_schema.py -vv
+  - python3 scripts/validate_yaml.py
+files_expected:
+  - docs/09_Financial_Model_Schema.yaml
+  - deck_builder/slide_factory.py
+  - financial_model/slide_numeric_assertion_checker.py
+  - tests/unit/test_slide_factory_scenario_injection.py
+  - .pfos/baby_steps/122_slide_factory_scenario_injection.yaml

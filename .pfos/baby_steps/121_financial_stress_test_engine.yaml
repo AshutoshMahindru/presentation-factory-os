@@ -1,0 +1,19 @@
+step_id: 121
+name: financial_stress_test_engine
+branch: codex/step-121-financial-stress-test-engine
+objective: >
+  Record the stress-test engine metadata slice for financial scenarios. Repo
+  evidence includes docs/09_Financial_Model_Schema.yaml scenario dependencies,
+  the scaffolded financial_model/stress_test_engine.py module, and the
+  scaffolded stress-test unit surface. Keep stress testing deterministic and
+  connected to declared scenario dependencies.
+commit_message: "step-121: Add financial stress test engine metadata"
+validation_commands:
+  - python3 -m compileall financial_model
+  - python3 -m pytest tests/unit/test_financial_validator.py -vv
+  - python3 scripts/validate_yaml.py
+files_expected:
+  - docs/09_Financial_Model_Schema.yaml
+  - financial_model/stress_test_engine.py
+  - tests/unit/test_stress_test_engine.py
+  - .pfos/baby_steps/121_financial_stress_test_engine.yaml

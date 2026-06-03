@@ -2,8 +2,8 @@
 
 This document summarizes the PFOS v3.2.4 workflow-service API/control-plane
 surface that is implemented and covered by integration tests after Baby Steps
-66-71. It documents actual behavior only; planned endpoints remain marked as
-planned.
+66-71 and 112-114. It documents actual behavior only; planned endpoints remain
+marked as planned.
 
 ## Service Health
 
@@ -19,13 +19,21 @@ not perform database, Docker, source lifecycle, or outbox dependency checks.
 
 | Endpoint | Implemented | Contract test |
 | --- | --- | --- |
-| `GET /health/projects/{project_id}` | Planned | Not yet implemented |
+| `GET /health/projects/{project_id}` | Yes | `tests/integration/test_project_health_endpoint.py` |
 | `GET /health/projects/{project_id}/outbox` | Yes | `tests/integration/test_health_endpoint_normalization.py`, `tests/integration/test_source_retraction_status_e2e_hardening.py` |
 | `GET /health/projects/{project_id}/source-retractions` | Yes | `tests/integration/test_health_endpoint_normalization.py`, `tests/integration/test_source_retraction_status_e2e_hardening.py` |
 | `GET /health/projects/{project_id}/hard-gates` | Yes | `tests/integration/test_health_endpoint_normalization.py`, `tests/integration/test_review_approved_export_e2e.py`, `tests/integration/test_source_retraction_status_e2e_hardening.py` |
 
-All implemented project health subresources verify project existence first and
-return `404` with `detail.error = "project_not_found"` for unknown projects.
+All project health endpoints verify project existence first and return `404`
+with `detail.error = "project_not_found"` for unknown projects.
+
+The aggregate project health endpoint is read-only. It composes project phase,
+health score, evidence coverage, open retraction count, days in current phase,
+approval velocity, blocking-gate status, and the existing outbox,
+source-retraction, and hard-gate status payloads. Optional project repository
+health helpers are used when present; otherwise the endpoint returns
+deterministic fallback values without mutating project, outbox, source
+lifecycle, approval, or hard-gate state.
 
 ## Project Lifecycle
 
@@ -44,6 +52,27 @@ The tested happy path is:
 Phase transition requests remain blocked by existing outbox, retraction,
 stale-artifact, blocking-rule, approval quorum, and export guards. The API tests
 do not weaken or bypass guard semantics.
+
+## Intake Chat Control Plane
+
+| Endpoint | Implemented | Contract test |
+| --- | --- | --- |
+| `GET /projects/{project_id}/intake-chat/messages` | Yes | `tests/integration/test_chat_api.py`, `tests/integration/test_chat_intake_flow.py` |
+| `POST /projects/{project_id}/intake-chat` | Yes | `tests/integration/test_chat_intake_flow.py` |
+| `POST /projects/{project_id}/intake-chat/messages` | Yes | `tests/integration/test_chat_api.py`, `tests/integration/test_chat_intake_flow.py` |
+
+Intake chat is project-scoped and append-only. `GET` verifies project existence,
+returns messages ordered by `turn_index`, and supports bounded `limit` plus
+`after_turn_index` pagination. Invalid bounds return `422` with
+`detail.error = "invalid_chat_query"`.
+
+`POST` accepts operator intake content only while the project is in `intake`.
+Unknown projects return `404` with `detail.error = "project_not_found"` and
+non-intake projects return `409` with `detail.error = "phase_mismatch"`.
+Successful turns persist the user message, derive a deterministic structured
+proposal through the intake orchestrator, append an assistant summary message,
+and return the proposal. The proposal is advisory: it does not mutate project
+fields or advance phase state.
 
 ## Approval Control Plane
 

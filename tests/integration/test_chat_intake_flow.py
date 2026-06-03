@@ -13,6 +13,7 @@ from system.chat_repository import ChatMessage
 
 
 client = TestClient(workflow.app)
+API_MEDIA_TYPE = "application/vnd.pfos.v3.2.4+json"
 
 
 READY_RESPONSE = {
@@ -221,7 +222,7 @@ def test_intake_chat_proposal_does_not_mutate_project_fields(monkeypatch) -> Non
     response = client.post(
         "/projects/project-1/intake-chat",
         json={"content": "Atlas Robotics needs Series B approval."},
-        headers={"Accept": "application/vnd.pfos.v3.2.4+json"},
+        headers={"Accept": API_MEDIA_TYPE, "Content-Type": API_MEDIA_TYPE},
     )
 
     assert response.status_code == 200

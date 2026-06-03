@@ -34,8 +34,11 @@ validate-json:
 validate-yaml:
 	$(PYTHON) scripts/validate_yaml.py
 
-validate-sql-drift validate-sql-canonical:
+validate-sql-drift:
 	$(PYTHON) scripts/check_postgres_schema_drift.py
+
+validate-sql-canonical:
+	$(PYTHON) scripts/check_sql_canonical.py
 
 validate: compile validate-json validate-yaml validate-sql-drift validate-sql-canonical validate-phase-enums no-agent-db-imports test
 

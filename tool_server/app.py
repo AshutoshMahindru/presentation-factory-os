@@ -93,11 +93,20 @@ class CompileFinancialSpecResponse(BaseModel):
 async def compile_financial_spec(
     req: CompileFinancialSpecRequest,
 ) -> CompileFinancialSpecResponse:
-    from financial_model.spec_compiler import FinancialSpecCompiler
+    from financial_model.spec_compiler import CompilationError, FinancialSpecCompiler
     from financial_model.validator import FinancialModelValidator
 
     compiler = FinancialSpecCompiler()
-    result = compiler.compile(req.spec, project_id=req.project_id)
+    try:
+        result = compiler.compile(req.spec, project_id=req.project_id)
+    except CompilationError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "financial_spec_compilation_failed",
+                "message": str(exc),
+            },
+        ) from exc
 
     # The compile result is then run through the existing validator so the
     # caller gets a guarantee that the cells are export-ready (modulo

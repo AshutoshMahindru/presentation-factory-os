@@ -47,6 +47,7 @@ def test_ui_api_client_exposes_operator_status_helpers() -> None:
 
 def test_operator_smoke_path_ui_files_are_present() -> None:
     required_paths = [
+        "ui/app/page.tsx",
         "ui/app/approvals/page.tsx",
         "ui/components/ApprovalLedger.tsx",
         "ui/components/ExportReadinessPanel.tsx",
@@ -77,6 +78,20 @@ def test_project_health_component_surfaces_dashboard_status() -> None:
 
     assert "export function ProjectHealth" in project_health
     assert "export default ProjectHealth" in project_health
+
+
+def test_project_dashboard_page_wires_operator_status_panels() -> None:
+    dashboard_page = read_repo_file("ui/app/page.tsx")
+
+    for label in [
+        "Operator control plane",
+        "Load dashboard",
+        "ProjectHealth",
+        "getProjectControlPlaneHealth",
+        "getApprovalStatus",
+        "Enter a project ID to inspect queue, hard-gate, and approval status.",
+    ]:
+        assert label in dashboard_page
 
 
 def test_queue_and_hard_gate_panels_surface_operator_blockers() -> None:

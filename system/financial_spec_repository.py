@@ -49,6 +49,13 @@ class FinancialScenarioRow:
     updated_at: str
 
 
+@dataclass(frozen=True)
+class FinancialSpecPromotionResult:
+    spec_id: UUID
+    promoted_to: dict[str, Any]
+    cell_refs: tuple[str, ...]
+
+
 def _validate_status(status: str, allowed: frozenset[str], kind: str) -> None:
     if status not in allowed:
         raise ValueError(
@@ -220,6 +227,90 @@ class FinancialSpecRepository:
                     (json.dumps(promoted_to), spec_id),
                 )
                 conn.commit()
+
+    def promote_validated_spec_to_financial_cells(
+        self,
+        spec_id: UUID,
+        financial_repository: Any,
+        *,
+        compiled_cells: list[dict[str, Any]] | None = None,
+    ) -> FinancialSpecPromotionResult:
+        """Promote a validated sandbox spec's compiled cells to canonical cells.
+
+        The sandbox stores the draft spec and compiled cell payload. The
+        canonical FinancialRepository owns the actual cell upserts. This
+        helper bridges the two repositories while preserving lineage via
+        promoted_from_spec and the sandbox promoted_to payload.
+        """
+        from financial_model.validator import FinancialModelValidator
+
+        spec = self.get_spec(spec_id)
+        if spec is None:
+            raise ValueError(f"financial spec {spec_id} was not found")
+        if spec.status != "validated":
+            raise ValueError(
+                f"financial spec {spec_id} must be validated before promotion"
+            )
+
+        raw_cells = compiled_cells
+        if raw_cells is None:
+            raw_cells = spec.spec_json.get("compiled_cells")
+        if not isinstance(raw_cells, list) or not raw_cells:
+            raise ValueError(
+                "validated financial spec must include non-empty compiled_cells"
+            )
+
+        cells: list[dict[str, Any]] = []
+        for index, raw_cell in enumerate(raw_cells):
+            if not isinstance(raw_cell, dict):
+                raise ValueError(f"compiled_cells[{index}] must be an object")
+            cell = dict(raw_cell)
+            if str(cell.get("project_id")) != str(spec.project_id):
+                raise ValueError(
+                    f"compiled_cells[{index}] project_id does not match spec project_id"
+                )
+            cells.append(cell)
+
+        FinancialModelValidator().assert_valid_cells(cells)
+
+        cell_refs: list[str] = []
+        scenarios: set[str] = set()
+        for cell in cells:
+            scenario = str(cell["scenario"])
+            cell_ref = str(cell["cell_ref"])
+            financial_repository.upsert_cell(
+                project_id=spec.project_id,
+                thesis_pillar_id=spec.thesis_pillar_id,
+                promoted_from_spec=spec.id,
+                scenario=scenario,
+                cell_ref=cell_ref,
+                label=str(cell["label"]),
+                value=cell["value"],
+                unit=cell.get("unit"),
+                formula=str(cell["formula"]),
+                source_refs=list(cell.get("source_refs") or []),
+                ingestion_source_type=str(
+                    cell.get("ingestion_source_type", "manual_compiler")
+                ),
+                parser_provenance=dict(cell.get("parser_provenance") or {}),
+                phase_scope_version=cell.get("phase_scope_version"),
+                artifact_status=str(cell.get("artifact_status", "active")),
+            )
+            cell_refs.append(cell_ref)
+            scenarios.add(scenario)
+
+        promoted_to = {
+            "canonical_table": "financial_cells",
+            "cell_count": len(cell_refs),
+            "cell_refs": cell_refs,
+            "scenarios": sorted(scenarios),
+        }
+        self.mark_promoted(spec.id, promoted_to)
+        return FinancialSpecPromotionResult(
+            spec_id=spec.id,
+            promoted_to=promoted_to,
+            cell_refs=tuple(cell_refs),
+        )
 
     # ------------------------------------------------------------------
     # Scenarios

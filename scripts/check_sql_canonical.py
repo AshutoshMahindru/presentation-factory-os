@@ -25,14 +25,16 @@ def main() -> int:
         print(f"FAIL: Deployable schema missing: {DEPLOYABLE}", file=sys.stderr)
         return 1
 
-    canonical_text = CANONICAL.read_text(encoding="utf-8")
-    deployable_text = DEPLOYABLE.read_text(encoding="utf-8")
+    canonical_bytes = CANONICAL.read_bytes()
+    deployable_bytes = DEPLOYABLE.read_bytes()
 
-    if canonical_text == deployable_text:
+    if canonical_bytes == deployable_bytes:
         print("OK: Deployable schema is byte-for-byte canonical.")
         return 0
 
     print("FAIL: Deployable schema drifted from canonical source.", file=sys.stderr)
+    canonical_text = canonical_bytes.decode("utf-8", errors="replace")
+    deployable_text = deployable_bytes.decode("utf-8", errors="replace")
     diff = difflib.unified_diff(
         canonical_text.splitlines(keepends=True),
         deployable_text.splitlines(keepends=True),
