@@ -279,6 +279,32 @@ class FinancialRepository:
                 )
                 conn.commit()
 
+    def mark_cells_stale_for_retracted_source(
+        self,
+        project_id: UUID,
+        source_id: str,
+    ) -> int:
+        """Mark active cells stale when they cite a retracted source."""
+        if not source_id or not source_id.strip():
+            raise ValueError("source_id is required")
+
+        with self._pool.connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(
+                    """
+                    UPDATE financial_cells
+                    SET artifact_status = 'stale_due_to_retreat', updated_at = now()
+                    WHERE project_id = %s
+                      AND artifact_status = 'active'
+                      AND %s = ANY(source_refs)
+                    RETURNING id
+                    """,
+                    (project_id, source_id),
+                )
+                rows = cur.fetchall()
+                conn.commit()
+                return len(rows)
+
     def set_phase_scope_version(
         self,
         project_id: UUID,

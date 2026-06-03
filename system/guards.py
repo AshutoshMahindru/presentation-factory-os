@@ -7,6 +7,7 @@ from system.approval_quorum import ApprovalQuorum
 from system.approval_ledger_repository import ApprovalLedgerRepository
 from system.hard_gate_repository import HardGateRepository
 from system.audience_profile_validator import AudienceProfileValidator
+from financial_model.validator import FinancialModelValidator
 
 
 COMPOSE_FILE = "docker-compose.apps.yaml"
@@ -34,11 +35,13 @@ class GuardEvaluator:
         approval_quorum: ApprovalQuorum | None = None,
         approval_ledger_repository: ApprovalLedgerRepository | None = None,
         hard_gate_repository: HardGateRepository | None = None,
+        financial_model_validator: FinancialModelValidator | None = None,
     ) -> None:
         self.audience_validator = audience_validator or AudienceProfileValidator.from_file()
         self.approval_quorum = approval_quorum or ApprovalQuorum.from_yaml()
         self.approval_ledger_repository = approval_ledger_repository or ApprovalLedgerRepository()
         self.hard_gate_repository = hard_gate_repository or HardGateRepository()
+        self.financial_model_validator = financial_model_validator or FinancialModelValidator()
 
     def evaluate(self, guard_name: str, context: dict[str, Any]) -> GuardResult:
         if guard_name == "audience_psychology_adequate":
@@ -49,6 +52,9 @@ class GuardEvaluator:
 
         if guard_name == "no_blocking_rules":
             return self._no_blocking_rules(guard_name, context)
+
+        if guard_name == "model_validated":
+            return self._model_validated(guard_name, context)
 
         value = context.get("guards", {}).get(guard_name)
         if value is True:
@@ -110,6 +116,58 @@ class GuardEvaluator:
             passed=False,
             reason=result.reason(),
         )
+
+    def _model_validated(self, guard_name: str, context: dict[str, Any]) -> GuardResult:
+        cells = context.get("financial_cells")
+        if cells is None:
+            financial_model = context.get("financial_model", {})
+            if isinstance(financial_model, dict):
+                cells = financial_model.get("cells")
+
+        if cells is None:
+            if context.get("guards", {}).get(guard_name) is True:
+                return GuardResult(name=guard_name, passed=True)
+            return GuardResult(
+                name=guard_name,
+                passed=False,
+                reason="financial_cells are required for deterministic model validation.",
+            )
+
+        if not isinstance(cells, list):
+            return GuardResult(
+                name=guard_name,
+                passed=False,
+                reason="financial_cells must be a list.",
+            )
+
+        if not all(isinstance(cell, dict) for cell in cells):
+            return GuardResult(
+                name=guard_name,
+                passed=False,
+                reason="financial_cells entries must be objects.",
+            )
+
+        result = self.financial_model_validator.validate_cells(cells)
+        if not result.valid:
+            return GuardResult(
+                name=guard_name,
+                passed=False,
+                reason="; ".join(result.errors),
+            )
+
+        inactive = [
+            f"{cell.get('scenario', '<missing>')}:{cell.get('cell_ref', '<missing>')}={cell.get('artifact_status')}"
+            for cell in cells
+            if cell.get("artifact_status", "active") != "active"
+        ]
+        if inactive:
+            return GuardResult(
+                name=guard_name,
+                passed=False,
+                reason="financial model contains non-active cells: " + ", ".join(inactive),
+            )
+
+        return GuardResult(name=guard_name, passed=True)
 
     def _approval_quorum_met(self, guard_name: str, context: dict[str, Any]) -> GuardResult:
         project_id = context.get("project", {}).get("project_id")

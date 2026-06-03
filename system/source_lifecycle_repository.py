@@ -15,6 +15,13 @@ class RetractionCascadeStatus:
     oldest_open_age_seconds: int | None
 
 
+@dataclass(frozen=True)
+class SourceRetractionInvalidationResult:
+    project_id: str
+    source_id: str
+    stale_financial_cells_count: int
+
+
 class SourceLifecycleRepository:
     """
     Deterministic Postgres-backed source lifecycle status reader.
@@ -77,6 +84,40 @@ class SourceLifecycleRepository:
             processing_count=processing_count,
             failed_count=failed_count,
             oldest_open_age_seconds=oldest_age,
+        )
+
+    def invalidate_financial_cells_for_retracted_source(
+        self,
+        project_id: str,
+        source_id: str,
+    ) -> SourceRetractionInvalidationResult:
+        if not project_id or not project_id.strip():
+            raise ValueError("project_id is required")
+        if not source_id or not source_id.strip():
+            raise ValueError("source_id is required")
+
+        sql = f"""
+        WITH stale_financial_cells AS (
+          UPDATE financial_cells
+          SET artifact_status = 'stale_due_to_retreat',
+              updated_at = now()
+          WHERE project_id = '{self._sql(project_id)}'
+            AND artifact_status = 'active'
+            AND '{self._sql(source_id)}' = ANY(source_refs)
+          RETURNING id
+        )
+        SELECT count(*)::int
+        FROM stale_financial_cells;
+        """
+
+        result = self._psql(sql)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr)
+
+        return SourceRetractionInvalidationResult(
+            project_id=project_id,
+            source_id=source_id,
+            stale_financial_cells_count=self._parse_int(result.stdout.strip()),
         )
 
     def _psql(self, sql: str):

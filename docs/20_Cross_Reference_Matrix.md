@@ -62,6 +62,7 @@
 | All YAML parses | `08`, `09`, `10`, `12`, `13`, `14`, `15`, `17` parse with `yaml.safe_load` | Must pass |
 | All JSON Schema validates | `06`, `07`, `21`, and `22` validate against Draft 2020-12 | Must pass |
 | SQL validates | `04_Database_Schemas.sql` runs against PostgreSQL 16 | Must pass |
+| SQL canonicalization matches deployable schema | `docs/04_Database_Schemas.sql` is canonical and `infra/postgres/init/001_schema.sql` matches byte-for-byte through `make validate-sql-canonical` | Must pass |
 | Agent DB isolation | `agents/` imports no raw DB clients | Must pass |
 | Source lifecycle blocks affected exports | Source retraction cascade affects claims, slides, projects, and exported-deck alerts | Must pass |
 | Cypher validates | `05_Evidence_Graph_Cypher.cypher` executes against Neo4j 5 in CI | Must pass |

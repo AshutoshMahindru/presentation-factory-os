@@ -275,6 +275,15 @@ class _FakePool:
         return _CM()
 
 
+class _RecordingFinancialRepository:
+    def __init__(self) -> None:
+        self.upserts: list[dict[str, Any]] = []
+
+    def upsert_cell(self, **kwargs: Any) -> object:
+        self.upserts.append(kwargs)
+        return object()
+
+
 # ---------------------------------------------------------------------------
 # Specs: create / get / list
 # ---------------------------------------------------------------------------
@@ -456,6 +465,119 @@ def test_mark_promoted_records_promoted_to_payload() -> None:
     assert refreshed is not None
     assert refreshed.status == "promoted"
     assert refreshed.promoted_to == payload
+
+
+# ---------------------------------------------------------------------------
+# Step 141 promotion bridge
+# ---------------------------------------------------------------------------
+
+
+def test_promote_validated_spec_to_financial_cells_upserts_and_marks_promoted() -> None:
+    pool = _FakePool()
+    repo = FinancialSpecRepository(pool)  # type: ignore[arg-type]
+    project_id = uuid.uuid4()
+    pillar_id = uuid.uuid4()
+    spec = repo.create_spec(
+        project_id=project_id,
+        name="Validated sandbox model",
+        thesis_pillar_id=pillar_id,
+        status="validated",
+        spec_json={
+            "compiled_cells": [
+                {
+                    "project_id": str(project_id),
+                    "scenario": "base",
+                    "cell_ref": "Revenue",
+                    "label": "Revenue",
+                    "value": 1000,
+                    "unit": "USD",
+                    "formula": "1000",
+                    "source_refs": ["src-1"],
+                    "ingestion_source_type": "manual_compiler",
+                    "parser_provenance": {"parser_name": "pfos_spec_compiler"},
+                    "phase_scope_version": 3,
+                },
+                {
+                    "project_id": str(project_id),
+                    "scenario": "downside",
+                    "cell_ref": "EBITDA",
+                    "label": "EBITDA",
+                    "value": 250,
+                    "formula": "Revenue - opex",
+                },
+            ],
+        },
+    )
+    canonical_repo = _RecordingFinancialRepository()
+
+    result = repo.promote_validated_spec_to_financial_cells(
+        spec.id,
+        canonical_repo,
+    )
+
+    assert result.spec_id == spec.id
+    assert result.cell_refs == ("Revenue", "EBITDA")
+    assert result.promoted_to == {
+        "canonical_table": "financial_cells",
+        "cell_count": 2,
+        "cell_refs": ["Revenue", "EBITDA"],
+        "scenarios": ["base", "downside"],
+    }
+
+    refreshed = repo.get_spec(spec.id)
+    assert refreshed is not None
+    assert refreshed.status == "promoted"
+    assert refreshed.promoted_to == result.promoted_to
+
+    assert len(canonical_repo.upserts) == 2
+    revenue, ebitda = canonical_repo.upserts
+    assert revenue["project_id"] == project_id
+    assert revenue["thesis_pillar_id"] == pillar_id
+    assert revenue["promoted_from_spec"] == spec.id
+    assert revenue["scenario"] == "base"
+    assert revenue["cell_ref"] == "Revenue"
+    assert revenue["source_refs"] == ["src-1"]
+    assert revenue["ingestion_source_type"] == "manual_compiler"
+    assert revenue["parser_provenance"] == {"parser_name": "pfos_spec_compiler"}
+    assert revenue["phase_scope_version"] == 3
+    assert revenue["artifact_status"] == "active"
+    assert ebitda["scenario"] == "downside"
+    assert ebitda["cell_ref"] == "EBITDA"
+    assert ebitda["source_refs"] == []
+    assert ebitda["parser_provenance"] == {}
+
+
+def test_promote_validated_spec_rejects_project_mismatch_before_upsert() -> None:
+    pool = _FakePool()
+    repo = FinancialSpecRepository(pool)  # type: ignore[arg-type]
+    project_id = uuid.uuid4()
+    spec = repo.create_spec(
+        project_id=project_id,
+        name="Mismatched sandbox model",
+        status="validated",
+        spec_json={
+            "compiled_cells": [
+                {
+                    "project_id": str(uuid.uuid4()),
+                    "scenario": "base",
+                    "cell_ref": "Revenue",
+                    "label": "Revenue",
+                    "value": 1000,
+                    "formula": "1000",
+                }
+            ],
+        },
+    )
+    canonical_repo = _RecordingFinancialRepository()
+
+    with pytest.raises(ValueError, match="project_id does not match spec project_id"):
+        repo.promote_validated_spec_to_financial_cells(spec.id, canonical_repo)
+
+    assert canonical_repo.upserts == []
+    refreshed = repo.get_spec(spec.id)
+    assert refreshed is not None
+    assert refreshed.status == "validated"
+    assert refreshed.promoted_to is None
 
 
 # ---------------------------------------------------------------------------
